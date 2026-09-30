@@ -29,6 +29,8 @@ jobs:
             qt6-base-dev \
             qt6-base-dev-tools \
             qt6-l10n-tools \
+            qt6-svg-dev \
+            libqt6svg6 \
             libgl1-mesa-dev \
             libfuse2t64 \
             file \
@@ -94,6 +96,8 @@ jobs:
             qt6-base-dev \
             qt6-base-dev-tools \
             qt6-l10n-tools \
+            qt6-svg-dev \
+            libqt6svg6 \
             libgl1-mesa-dev
 
       - name: Build DEB
@@ -124,6 +128,7 @@ jobs:
             pkgconf-pkg-config \
             qt6-qtbase-devel \
             qt6-linguist \
+            qt6-qtsvg-devel \
             gcc-c++ \
             make
 
