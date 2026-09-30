@@ -44,6 +44,8 @@ class MainWindow : public QMainWindow
 
     protected:
         void closeEvent(QCloseEvent *event) override;
+        void resizeEvent(QResizeEvent *event) override;
+        void showEvent(QShowEvent *event) override;
 
     private:
         void updateTabActivity(int index);

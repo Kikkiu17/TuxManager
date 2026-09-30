@@ -240,3 +240,15 @@ void CpuDetailWidget::onContextMenuRequested(const QPoint &globalPos)
 
     menu.exec(globalPos);
 }
+
+void CpuDetailWidget::SetCompactMode(bool compact)
+{
+    if (QGridLayout *statsGrid = this->findChild<QGridLayout *>("statsGrid"))
+    {
+        for (int i = 0; i < statsGrid->count(); ++i)
+        {
+            if (QWidget *w = statsGrid->itemAt(i)->widget())
+                w->setVisible(!compact);
+        }
+    }
+}

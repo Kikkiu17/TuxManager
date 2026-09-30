@@ -77,6 +77,30 @@ void MainWindow::closeEvent(QCloseEvent *event)
     QMainWindow::closeEvent(event);
 }
 
+void MainWindow::resizeEvent(QResizeEvent *event)
+{
+    QMainWindow::resizeEvent(event);
+    if (this->m_performanceWidget)
+    {
+        this->m_performanceWidget->updateResponsiveLayout(
+            this->m_performanceWidget->width(),
+            this->m_performanceWidget->height()
+        );
+    }
+}
+
+void MainWindow::showEvent(QShowEvent *event)
+{
+    QMainWindow::showEvent(event);
+    if (this->m_performanceWidget)
+    {
+        this->m_performanceWidget->updateResponsiveLayout(
+            this->m_performanceWidget->width(),
+            this->m_performanceWidget->height()
+        );
+    }
+}
+
 void MainWindow::updateTabActivity(int index)
 {
     // Tabs: 0=Processes, 1=Performance, 2=Users, 3=Services
@@ -84,4 +108,12 @@ void MainWindow::updateTabActivity(int index)
     this->m_performanceWidget->SetActive(index == 1);
     this->m_usersWidget->SetActive(index == 2);
     this->m_servicesWidget->SetActive(index == 3);
+
+    if (index == 1 && this->m_performanceWidget)
+    {
+        this->m_performanceWidget->updateResponsiveLayout(
+            this->m_performanceWidget->width(),
+            this->m_performanceWidget->height()
+        );
+    }
 }

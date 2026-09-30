@@ -1,4 +1,4 @@
-QT       += core gui
+QT       += core gui dbus
 
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
@@ -39,7 +39,6 @@ SOURCES += \
     userswidget.cpp \
     serviceswidget.cpp \
     os/proc.cpp \
-    os/appregistry.cpp \
     os/process.cpp \
     os/processrefreshservice.cpp \
     os/processtreemodel.cpp \
@@ -63,7 +62,9 @@ SOURCES += \
     perf/swapgrapharea.cpp \
     perf/swapdetailwidget.cpp \
     perf/memorybar.cpp \
-    perf/memorydetailwidget.cpp
+    perf/memorydetailwidget.cpp \
+    system/smartreader.cpp \
+    perf/smartdatadialog.cpp
 
 HEADERS += \
     aboutdialog.h \
@@ -96,7 +97,6 @@ HEADERS += \
     userswidget.h \
     serviceswidget.h \
     os/proc.h \
-    os/appregistry.h \
     os/process.h \
     os/processrefreshservice.h \
     os/processtreemodel.h \
@@ -120,7 +120,9 @@ HEADERS += \
     perf/swapgrapharea.h \
     perf/swapdetailwidget.h \
     perf/memorybar.h \
-    perf/memorydetailwidget.h
+    perf/memorydetailwidget.h \
+    system/smartreader.h \
+    perf/smartdatadialog.h
 
 FORMS += \
     aboutdialog.ui \
@@ -137,7 +139,8 @@ FORMS += \
     perf/networkdetailwidget.ui \
     perf/gpudetailwidget.ui \
     perf/swapdetailwidget.ui \
-    perf/memorydetailwidget.ui
+    perf/memorydetailwidget.ui \
+    perf/smartdatadialog.ui
 
 RESOURCES += \
     resources.qrc
@@ -148,10 +151,11 @@ RESOURCES += \
 # the translations working no matter where the application is installed from.
 TRANSLATIONS += \
     translations/tux-manager_zh_CN.ts \
-    translations/tux-manager_cs_CZ.ts \
-    translations/tux-manager_pt_BR.ts
+    translations/tux-manager_cs_CZ.ts
 
-CONFIG += lrelease embed_translations
+exists($$[QT_INSTALL_BINS]/lrelease)|exists(/usr/bin/lrelease-qt6) {
+    CONFIG += lrelease embed_translations
+}
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin

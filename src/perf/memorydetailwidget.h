@@ -39,6 +39,7 @@ namespace Perf
 
             void Init();
             void ApplyColorScheme();
+            void SetCompactMode(bool compact);
 
         private slots:
             void onUpdated();
@@ -48,6 +49,7 @@ namespace Perf
 
             Ui::MemoryDetailWidget *ui;
             const HistoryBuffer  *m_memHistory { nullptr };
+            bool                  m_compactMode { false };
     };
 } // namespace Perf
 

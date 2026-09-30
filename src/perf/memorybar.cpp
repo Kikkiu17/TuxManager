@@ -30,7 +30,7 @@ using namespace Perf;
 
 MemoryBar::MemoryBar(QWidget *parent) : QWidget(parent)
 {
-    this->setMinimumHeight(40);
+    this->setMinimumHeight(20);
     this->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     this->setMouseTracking(true);
 }

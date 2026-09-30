@@ -21,6 +21,12 @@
       </widget>
      </item>
      <item>
+      <widget class="QPushButton" name="smartButton">
+       <property name="text"><string>SMART Data</string></property>
+       <property name="toolTip"><string>View S.M.A.R.T. health and diagnostic attributes for this drive</string></property>
+      </widget>
+     </item>
+     <item>
       <spacer>
        <property name="orientation"><enum>Qt::Horizontal</enum></property>
        <property name="sizeHint" stdset="0"><size><width>40</width><height>0</height></size></property>
@@ -62,7 +68,7 @@
 
    <item>
     <widget class="Perf::GraphWidget" name="activeGraphWidget">
-     <property name="minimumHeight"><number>220</number></property>
+     <property name="minimumHeight"><number>35</number></property>
      <property name="sizePolicy">
       <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
        <horstretch>0</horstretch>
@@ -122,7 +128,7 @@
 
    <item>
     <widget class="Perf::GraphWidget" name="transferGraphWidget">
-     <property name="minimumHeight"><number>110</number></property>
+     <property name="minimumHeight"><number>35</number></property>
     </widget>
    </item>
 
@@ -170,13 +176,18 @@
      <item row="2" column="2"><widget class="QLabel" name="systemDiskLabel"><property name="text"><string>System disk</string></property><property name="styleSheet"><string></string></property></widget></item>
      <item row="2" column="3"><widget class="QLabel" name="systemDiskValueLabel"><property name="text"><string>—</string></property></widget></item>
 
-     <item row="3" column="0"><widget class="QLabel" name="deviceLabel"><property name="text"><string>Device</string></property><property name="styleSheet"><string></string></property></widget></item>
-     <item row="3" column="1"><widget class="QLabel" name="deviceValueLabel"><property name="text"><string>—</string></property></widget></item>
+     <item row="3" column="0"><widget class="QLabel" name="totalReadLabel"><property name="text"><string>Total read</string></property><property name="styleSheet"><string></string></property></widget></item>
+     <item row="3" column="1"><widget class="QLabel" name="totalReadValueLabel"><property name="text"><string>—</string></property></widget></item>
      <item row="3" column="2"><widget class="QLabel" name="swapDeviceLabel"><property name="text"><string>Swap device</string></property><property name="styleSheet"><string></string></property></widget></item>
      <item row="3" column="3"><widget class="QLabel" name="swapDeviceValueLabel"><property name="text"><string>—</string></property></widget></item>
 
+     <item row="4" column="0"><widget class="QLabel" name="totalWriteLabel"><property name="text"><string>Total written</string></property><property name="styleSheet"><string></string></property></widget></item>
+     <item row="4" column="1"><widget class="QLabel" name="totalWriteValueLabel"><property name="text"><string>—</string></property></widget></item>
      <item row="4" column="2"><widget class="QLabel" name="typeLabel"><property name="text"><string>Type</string></property><property name="styleSheet"><string></string></property></widget></item>
      <item row="4" column="3"><widget class="QLabel" name="typeValueLabel"><property name="text"><string>—</string></property></widget></item>
+
+     <item row="5" column="0"><widget class="QLabel" name="deviceLabel"><property name="text"><string>Device</string></property><property name="styleSheet"><string></string></property></widget></item>
+     <item row="5" column="1"><widget class="QLabel" name="deviceValueLabel"><property name="text"><string>—</string></property></widget></item>
     </layout>
    </item>
 

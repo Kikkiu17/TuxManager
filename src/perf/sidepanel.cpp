@@ -47,6 +47,17 @@ SidePanel::SidePanel(QWidget *parent) : QWidget(parent)
     outerLayout->addWidget(this->m_scrollArea);
     this->setLayout(outerLayout);
 
+    this->m_container->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(this->m_container, &QWidget::customContextMenuRequested, this, [this](const QPoint &pos)
+    {
+        emit this->itemContextMenuRequested(nullptr, this->m_container->mapToGlobal(pos));
+    });
+    this->m_scrollArea->viewport()->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(this->m_scrollArea->viewport(), &QWidget::customContextMenuRequested, this, [this](const QPoint &pos)
+    {
+        emit this->itemContextMenuRequested(nullptr, this->m_scrollArea->viewport()->mapToGlobal(pos));
+    });
+
     this->setMinimumWidth(150);
 }
 
@@ -146,14 +157,14 @@ void SidePanel::SetItemVisible(SidePanelItem *item, bool visible)
 
 bool SidePanel::IsItemVisible(SidePanelItem *item) const
 {
-    return item && item->isVisible();
+    return item && !item->isHidden();
 }
 
 SidePanelItem *SidePanel::FirstVisibleItem() const
 {
     for (SidePanelItem *item : this->m_items)
     {
-        if (item && item->isVisible())
+        if (item && !item->isHidden())
             return item;
     }
     return nullptr;

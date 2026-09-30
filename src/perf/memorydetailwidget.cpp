@@ -203,8 +203,36 @@ void MemoryDetailWidget::onUpdated()
 
 void MemoryDetailWidget::updateCompressedVisibility(bool visible)
 {
-    this->ui->legendCompressedDot->setVisible(visible);
-    this->ui->legendCompressedLabel->setVisible(visible);
-    this->ui->compressedLabel->setVisible(visible);
-    this->ui->statCompressedValue->setVisible(visible);
+    const bool show = visible && !this->m_compactMode;
+    this->ui->legendCompressedDot->setVisible(show);
+    this->ui->legendCompressedLabel->setVisible(show);
+    this->ui->compressedLabel->setVisible(show);
+    this->ui->statCompressedValue->setVisible(show);
+}
+
+void MemoryDetailWidget::SetCompactMode(bool compact)
+{
+    this->m_compactMode = compact;
+
+    this->ui->compositionLabel->setVisible(!compact);
+    this->ui->legendUsedDot->setVisible(!compact);
+    this->ui->legendUsedLabel->setVisible(!compact);
+    this->ui->legendCompressedDot->setVisible(!compact && Metrics::GetMemory()->HasCompressedMemory());
+    this->ui->legendCompressedLabel->setVisible(!compact && Metrics::GetMemory()->HasCompressedMemory());
+    this->ui->legendDirtyDot->setVisible(!compact);
+    this->ui->legendDirtyLabel->setVisible(!compact);
+    this->ui->legendCachedDot->setVisible(!compact);
+    this->ui->legendCachedLabel->setVisible(!compact);
+    this->ui->legendFreeDot->setVisible(!compact);
+    this->ui->legendFreeLabel->setVisible(!compact);
+    this->ui->compositionBar->setVisible(!compact);
+
+    if (QGridLayout *statsGrid = this->findChild<QGridLayout *>("statsGrid"))
+    {
+        for (int i = 0; i < statsGrid->count(); ++i)
+        {
+            if (QWidget *w = statsGrid->itemAt(i)->widget())
+                w->setVisible(!compact);
+        }
+    }
 }

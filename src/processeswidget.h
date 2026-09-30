@@ -20,7 +20,6 @@
 #define PROCESSESWIDGET_H
 
 #include "os/processmodel.h"
-#include "os/appregistry.h"
 #include "os/processtreemodel.h"
 #include "os/processfilterproxy.h"
 #include "os/processrefreshservice.h"
@@ -51,12 +50,20 @@ class ProcessesWidget : public QWidget
     Q_OBJECT
 
     public:
+        enum class ViewMode
+        {
+            Grouped = 0,
+            Table = 1,
+            Tree = 2
+        };
+
         explicit ProcessesWidget(OS::ProcessRefreshService *processRefreshService, QWidget *parent = nullptr);
         ~ProcessesWidget();
         void SetActive(bool active);
         bool IsActive() const { return this->m_active; }
         void ClearSearchFilter();
         bool SelectProcessByPid(pid_t pid);
+        void SetViewMode(ViewMode mode);
 
     private slots:
         void onTimerTick();
@@ -70,15 +77,15 @@ class ProcessesWidget : public QWidget
         Ui::ProcessesWidget      *ui;
         OS::ProcessModel         *m_model;
         OS::ProcessTreeModel     *m_treeModel;
-        OS::AppRegistry          *m_appRegistry { nullptr };
         OS::ProcessFilterProxy   *m_proxy;
         QSortFilterProxyModel    *m_treeProxy;
         QTimer                   *m_refreshTimer;
         OS::ProcessRefreshService *m_processRefreshService { nullptr };
         QTreeView                *m_treeView { nullptr };
+        class QComboBox          *m_viewModeCombo { nullptr };
         bool                      m_active { false };
         bool                      m_tableContextMenuOpen { false };
-        bool                      m_treeViewMode { false };
+        ViewMode                  m_viewMode { ViewMode::Grouped };
         bool                      m_refreshInFlight { false };
         bool                      m_refreshPending { false };
         bool                      m_tableHeaderPersistenceEnabled { false };
@@ -89,6 +96,7 @@ class ProcessesWidget : public QWidget
 
         void setupTable();
         void startRefresh();
+        void setViewMode(ViewMode mode);
         void setTreeViewMode(bool enabled);
         void showHeaderContextMenu(QHeaderView *header, int columnCount, const std::function<QString(int)> &titleForColumn, const QPoint &pos);
         void saveTableHeaderState() const;
@@ -110,8 +118,6 @@ class ProcessesWidget : public QWidget
         void openTerminal();
         void setShowKernelTasks(bool checked);
         void setShowOtherUsersProcesses(bool checked);
-        void setShowIcons(bool checked);
-        void applyIconSetting();
         void captureExpandedTreePids(const QModelIndex &parentProxy, QSet<pid_t> &expandedPids) const;
         void restoreExpandedTreePids(const QModelIndex &sourceParent, const QSet<pid_t> &expandedPids);
         void restoreTreeStateDeferred(const QSet<pid_t> &expandedPids, const QList<pid_t> &treeSelection, pid_t treeCurrentPid, int treeScroll);

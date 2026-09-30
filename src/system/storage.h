@@ -42,6 +42,8 @@ class Storage
             double         ReadBps       { 0.0 };
             double         WriteBps      { 0.0 };
             double         MaxTransferBps { 0.0 };
+            quint64        TotalReadBytes { 0 };
+            quint64        TotalWriteBytes { 0 };
             qint64         CapacityBytes { 0 };
             qint64         FormattedBytes { 0 };
             bool           IsSystemDisk { false };

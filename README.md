@@ -33,9 +33,6 @@ Install from the official repositories:
 sudo pacman -S tuxmanager
 ```
 
-### Nixpkgs
-The package is available as `tux-manager` in the unstable channels and will be available in the `nixos-26.11` stable channel and later.
-
 ### Nix flake
 Add the following to your `flake.nix`:
 ```nix
@@ -67,7 +64,6 @@ the process locale when launching the application:
 ```bash
 LC_ALL=zh_CN.UTF-8 ./tux-manager  # Simplified Chinese
 LC_ALL=cs_CZ.UTF-8 ./tux-manager  # Czech
-LC_ALL=pt_BR.UTF-8 ./tux-manager  # Brazilian Portuguese
 LC_ALL=C ./tux-manager            # Built-in English
 ```
 

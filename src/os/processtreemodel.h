@@ -26,8 +26,6 @@
 
 namespace OS
 {
-    class AppRegistry;
-
     class ProcessTreeModel : public QAbstractItemModel
     {
         Q_OBJECT
@@ -56,6 +54,12 @@ namespace OS
                 ColCount
             };
 
+            enum class Mode
+            {
+                ApplicationGrouped = 0,
+                ProcessHierarchy = 1
+            };
+
             explicit ProcessTreeModel(QObject *parent = nullptr);
             ~ProcessTreeModel() override;
 
@@ -67,22 +71,30 @@ namespace OS
             QVariant headerData(int section, Qt::Orientation orientation, int role = Qt::DisplayRole) const override;
             Qt::ItemFlags flags(const QModelIndex &index) const override;
 
+            void SetMode(Mode mode);
+            Mode GetMode() const { return this->m_mode; }
             void SetProcesses(const QList<Process> &processes);
-            /// Registry used to provide icons for the name column; nullptr disables icons.
-            void SetAppRegistry(AppRegistry *registry) { this->m_appRegistry = registry; }
             QModelIndex IndexForPid(pid_t pid) const;
+            QList<pid_t> PidsForIndex(const QModelIndex &index) const;
+            bool IsGroupIndex(const QModelIndex &index) const;
 
         private:
             struct Node
             {
                 Process process;
+                bool isGroup { false };
+                int processCount { 1 };
                 Node *parent { nullptr };
                 QList<Node *> children;
             };
 
+            Mode m_mode { Mode::ApplicationGrouped };
             Node *m_root { nullptr };
-            AppRegistry *m_appRegistry { nullptr };
             QHash<pid_t, Node *> m_byPid;
+            QHash<pid_t, Node *> m_groupHeaders;
+
+            void buildGroupedTree(const QList<Process> &processes);
+            void buildHierarchyTree(const QList<Process> &processes);
 
             static QString columnHeader(Column col);
             static void freeNode(Node *node);

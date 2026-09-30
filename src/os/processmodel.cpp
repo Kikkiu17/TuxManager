@@ -17,8 +17,6 @@
  */
 
 #include "processmodel.h"
-
-#include "appregistry.h"
 #include "proc.h"
 #include "../configuration.h"
 #include "../misc.h"
@@ -63,8 +61,7 @@ namespace
                && lhs.IOWriteBps == rhs.IOWriteBps
                && lhs.IOTotalsAvailable == rhs.IOTotalsAvailable
                && lhs.IORatesAvailable == rhs.IORatesAvailable
-               && lhs.IOPermissionDenied == rhs.IOPermissionDenied
-               && lhs.IconName == rhs.IconName;
+               && lhs.IOPermissionDenied == rhs.IOPermissionDenied;
     }
 }
 
@@ -105,13 +102,6 @@ QVariant ProcessModel::data(const QModelIndex &index, int role) const
 
     const Process &proc = this->m_processes.at(index.row());
 
-    if (role == Qt::DecorationRole)
-    {
-        if (index.column() == ColName && this->m_appRegistry)
-            return this->m_appRegistry->IconFor(proc.IconName);
-        return {};
-    }
-
     if (role == Qt::DisplayRole)
     {
         switch (static_cast<Column>(index.column()))
@@ -129,11 +119,11 @@ QVariant ProcessModel::data(const QModelIndex &index, int role) const
             case ColIoReads:  return proc.IOTotalsAvailable ? Misc::FormatBytes(proc.IOReadBytes, 0) : QString("?");
             case ColIoWrites: return proc.IOTotalsAvailable ? Misc::FormatBytes(proc.IOWriteBytes, 0) : QString("?");
             case ColIoReadsPerSec:
-                if (proc.IOPermissionDenied)
+                if (proc.IOPermissionDenied || !proc.IOTotalsAvailable)
                     return QString("?");
                 return proc.IORatesAvailable ? Misc::FormatBytesPerSecond(proc.IOReadBps) : tr("measuring...");
             case ColIoWritesPerSec:
-                if (proc.IOPermissionDenied)
+                if (proc.IOPermissionDenied || !proc.IOTotalsAvailable)
                     return QString("?");
                 return proc.IORatesAvailable ? Misc::FormatBytesPerSecond(proc.IOWriteBps) : tr("measuring...");
             case ColThreads:  return proc.Threads;
@@ -274,7 +264,7 @@ void ProcessModel::SetProcesses(const QList<Process> &processes)
                 this->m_processes[row] = sortedProcesses.at(row);
                 emit dataChanged(this->index(row, 0),
                                  this->index(row, ColCount - 1),
-                                 { Qt::DisplayRole, Qt::DecorationRole, Qt::UserRole, Qt::TextAlignmentRole });
+                                 { Qt::DisplayRole, Qt::UserRole, Qt::TextAlignmentRole });
             }
             ++row;
             continue;
@@ -330,11 +320,10 @@ QList<Process> ProcessModel::RefreshSnapshot()
     opts.EffectiveUID       = CFG->EUID;
     QList<Process> fresh = Process::LoadAll(opts);
 
-    // Calculate CPU% per process: (delta process ticks) / (period per CPU) * 100
+    // Calculate CPU% per process: (delta process ticks) / (total period jiffies) * 100
     if (periodJiffies > 0)
     {
-        const double periodPerCpu =
-            static_cast<double>(periodJiffies) / this->m_numCpus;
+        const double totalPeriod = static_cast<double>(periodJiffies);
 
         for (Process &proc : fresh)
         {
@@ -343,9 +332,9 @@ QList<Process> ProcessModel::RefreshSnapshot()
                 const quint64 prevTicks = this->m_prevTicks.value(proc.PID);
                 if (proc.CPUTicks >= prevTicks)
                 {
-                    const double pct = static_cast<double>(proc.CPUTicks - prevTicks) / periodPerCpu * 100.0;
-                    // Cap at 100 % × num_cpus (matches htop's MINIMUM() clamp)
-                    proc.CPUPercent = qMin(pct, 100.0 * this->m_numCpus);
+                    const double pct = static_cast<double>(proc.CPUTicks - prevTicks) / totalPeriod * 100.0;
+                    // Cap at 100% of the entire CPU
+                    proc.CPUPercent = qMin(pct, 100.0);
                 }
             }
         }

@@ -38,6 +38,7 @@ namespace Perf
 
             void SetNetwork(int index);
             void ApplyColorScheme();
+            void SetCompactMode(bool compact);
 
         private slots:
             void onUpdated();

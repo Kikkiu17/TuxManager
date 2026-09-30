@@ -25,10 +25,13 @@
 #include "ui_processeswidget.h"
 #include "ui/uihelper.h"
 
+#include <QActionGroup>
 #include <QClipboard>
+#include <QComboBox>
 #include <QGuiApplication>
 #include <QHeaderView>
 #include <QInputDialog>
+#include <QLabel>
 #include <QMenu>
 #include <QMessageBox>
 #include <QProcess>
@@ -95,7 +98,7 @@ void ProcessesWidget::ClearSearchFilter()
 
 bool ProcessesWidget::SelectProcessByPid(pid_t pid)
 {
-    return this->m_treeViewMode ? this->selectProcessInTree(pid) : this->selectProcessInTable(pid);
+    return (this->m_viewMode != ViewMode::Table) ? this->selectProcessInTree(pid) : this->selectProcessInTable(pid);
 }
 
 bool ProcessesWidget::selectProcessInTable(pid_t pid)
@@ -158,10 +161,8 @@ bool ProcessesWidget::selectProcessInTree(pid_t pid)
 
 void ProcessesWidget::setupTable()
 {
-    static constexpr int PROCESS_COLUMN_SCHEMA_VERSION = 2;
-    const int savedProcessColumnSchemaVersion = CFG->ProcessColumnSchemaVersion;
-    const bool resetProcessHeaderState = savedProcessColumnSchemaVersion < 1;
-    const bool migrateProcessNameFirstLayout = savedProcessColumnSchemaVersion < 2;
+    static constexpr int PROCESS_COLUMN_SCHEMA_VERSION = 1;
+    const bool resetProcessHeaderState = CFG->ProcessColumnSchemaVersion < PROCESS_COLUMN_SCHEMA_VERSION;
     if (resetProcessHeaderState && CFG->ProcessListSortColumn > OS::ProcessModel::ColMemVirt)
         CFG->ProcessListSortColumn += 3;
 
@@ -181,9 +182,6 @@ void ProcessesWidget::setupTable()
 
     QTableView *tv = this->ui->tableView;
     this->m_treeView = new QTreeView(this);
-    tv->setIconSize(QSize(16, 16));
-    this->m_treeView->setIconSize(QSize(16, 16));
-    this->applyIconSetting();
 
     if (QVBoxLayout *vl = qobject_cast<QVBoxLayout *>(this->layout()))
     {
@@ -257,12 +255,6 @@ void ProcessesWidget::setupTable()
     {
         hv->restoreState(CFG->ProcessListHeaderState);
     }
-    if (migrateProcessNameFirstLayout)
-    {
-        // Through 1.0.8, PID was the first column. Migrate it once so names and icons
-        // lead both process views, then preserve any column order chosen by the user.
-        hv->moveSection(hv->visualIndex(OS::ProcessModel::ColName), 0);
-    }
     this->m_tableHeaderPersistenceEnabled = true;
 
     this->m_treeView->setModel(this->m_treeProxy);
@@ -274,8 +266,6 @@ void ProcessesWidget::setupTable()
     this->m_treeView->setEditTriggers(QAbstractItemView::NoEditTriggers);
     this->m_treeView->setContextMenuPolicy(Qt::CustomContextMenu);
     this->m_treeView->setRootIsDecorated(true);
-    // In the past we had PID for the original tree column, it looked odd since icons were added so now we show the hierarchy beside names and icons instead.
-    this->m_treeView->setTreePosition(OS::ProcessTreeModel::ColName);
     this->m_treeView->setItemsExpandable(true);
     this->m_treeView->setAnimated(false);
     this->m_treeView->setUniformRowHeights(true);
@@ -294,7 +284,7 @@ void ProcessesWidget::setupTable()
     });
     connect(treeHeader, &QHeaderView::sectionMoved, this, [this]() { this->saveTreeHeaderState(); });
     connect(treeHeader, &QHeaderView::sectionResized, this, [this]() { this->saveTreeHeaderState(); });
-    this->m_treeView->setColumnWidth(OS::ProcessTreeModel::ColName, 220);
+    this->m_treeView->setColumnWidth(OS::ProcessTreeModel::ColName, 160);
     this->m_treeView->setColumnWidth(OS::ProcessTreeModel::ColUser, 90);
     this->m_treeView->setColumnWidth(OS::ProcessTreeModel::ColState, 90);
     this->m_treeView->setColumnWidth(OS::ProcessTreeModel::ColCpu, 65);
@@ -320,46 +310,105 @@ void ProcessesWidget::setupTable()
     this->m_treeView->setColumnHidden(OS::ProcessTreeModel::ColIoWrites, true);
     this->m_treeView->setColumnHidden(OS::ProcessTreeModel::ColIoReadsPerSec, true);
     this->m_treeView->setColumnHidden(OS::ProcessTreeModel::ColIoWritesPerSec, true);
-    connect(this->m_treeView, &QTreeView::expanded, this, [this]() { this->m_treeView->resizeColumnToContents(OS::ProcessTreeModel::ColName); });
-    connect(this->m_treeView, &QTreeView::collapsed, this, [this]() { this->m_treeView->resizeColumnToContents(OS::ProcessTreeModel::ColName); });
+    connect(this->m_treeView, &QTreeView::expanded, this, [this]() { this->m_treeView->resizeColumnToContents(OS::ProcessTreeModel::ColPid); });
+    connect(this->m_treeView, &QTreeView::collapsed, this, [this]() { this->m_treeView->resizeColumnToContents(OS::ProcessTreeModel::ColPid); });
     if (!resetProcessHeaderState && !CFG->ProcessTreeHeaderState.isEmpty())
     {
         treeHeader->restoreState(CFG->ProcessTreeHeaderState);
     }
-    if (migrateProcessNameFirstLayout)
-        treeHeader->moveSection(treeHeader->visualIndex(OS::ProcessTreeModel::ColName), 0);
-    this->m_treeView->setColumnWidth(OS::ProcessTreeModel::ColPid, 65);
+    treeHeader->setSectionResizeMode(OS::ProcessTreeModel::ColPid, QHeaderView::Fixed);
     this->syncAllProcessColumnVisibility();
     this->m_treeHeaderPersistenceEnabled = true;
-    if (savedProcessColumnSchemaVersion < PROCESS_COLUMN_SCHEMA_VERSION)
+    if (resetProcessHeaderState)
     {
         CFG->ProcessColumnSchemaVersion = PROCESS_COLUMN_SCHEMA_VERSION;
         this->saveTableHeaderState();
         this->saveTreeHeaderState();
     }
-    connect(this->m_treeView, &QTreeView::customContextMenuRequested, this, &ProcessesWidget::onTreeContextMenu);
     this->updateIOMetricsEnabledState(false);
+    connect(this->m_treeView, &QTreeView::customContextMenuRequested, this, &ProcessesWidget::onTreeContextMenu);
+    QLabel *viewModeLabel = new QLabel(tr("View:"), this);
+    this->m_viewModeCombo = new QComboBox(this);
+    this->m_viewModeCombo->addItem(tr("Group by application"), static_cast<int>(ViewMode::Grouped));
+    this->m_viewModeCombo->addItem(tr("Table view (flat)"), static_cast<int>(ViewMode::Table));
+    this->m_viewModeCombo->addItem(tr("Tree view (process tree)"), static_cast<int>(ViewMode::Tree));
 
-    this->setTreeViewMode(CFG->ProcessTreeView);
+    this->ui->toolbarLayout->addWidget(viewModeLabel);
+    this->ui->toolbarLayout->addWidget(this->m_viewModeCombo);
+
+    connect(this->m_viewModeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int)
+    {
+        const ViewMode mode = static_cast<ViewMode>(this->m_viewModeCombo->currentData().toInt());
+        this->setViewMode(mode);
+    });
+
+    ViewMode initialMode = ViewMode::Grouped;
+    if (CFG->ProcessViewMode == static_cast<int>(ViewMode::Table))
+        initialMode = ViewMode::Table;
+    else if (CFG->ProcessViewMode == static_cast<int>(ViewMode::Tree))
+        initialMode = ViewMode::Tree;
+    else if (CFG->ProcessViewMode == static_cast<int>(ViewMode::Grouped))
+        initialMode = ViewMode::Grouped;
+    else if (CFG->ProcessTreeView)
+        initialMode = ViewMode::Tree;
+
+    this->setViewMode(initialMode);
+}
+
+void ProcessesWidget::SetViewMode(ViewMode mode)
+{
+    this->setViewMode(mode);
+}
+
+void ProcessesWidget::setViewMode(ViewMode mode)
+{
+    this->m_viewMode = mode;
+    CFG->ProcessViewMode = static_cast<int>(mode);
+    CFG->ProcessTreeView = (mode != ViewMode::Table);
+
+    if (this->m_viewModeCombo)
+    {
+        this->m_viewModeCombo->blockSignals(true);
+        const int idx = this->m_viewModeCombo->findData(static_cast<int>(mode));
+        if (idx >= 0)
+            this->m_viewModeCombo->setCurrentIndex(idx);
+        this->m_viewModeCombo->blockSignals(false);
+    }
+
+    const bool isTable = (mode == ViewMode::Table);
+    const QList<OS::Process> &snapshot = this->m_lastProcessSnapshot.isEmpty()
+                                         ? this->m_model->GetProcesses()
+                                         : this->m_lastProcessSnapshot;
+
+    if (mode == ViewMode::Grouped)
+    {
+        this->m_treeModel->SetMode(OS::ProcessTreeModel::Mode::ApplicationGrouped);
+        this->m_treeModel->SetProcesses(snapshot);
+        this->m_treeView->resizeColumnToContents(OS::ProcessTreeModel::ColPid);
+    }
+    else if (mode == ViewMode::Tree)
+    {
+        this->m_treeModel->SetMode(OS::ProcessTreeModel::Mode::ProcessHierarchy);
+        this->m_treeModel->SetProcesses(snapshot);
+        this->m_treeView->resizeColumnToContents(OS::ProcessTreeModel::ColPid);
+    }
+    else // Table
+    {
+        this->m_model->SetProcesses(snapshot);
+    }
+
+    if (this->m_treeView && this->ui->tableView)
+    {
+        this->ui->tableView->setVisible(isTable);
+        this->m_treeView->setVisible(!isTable);
+    }
+
+    this->updateStatusBar();
 }
 
 void ProcessesWidget::setTreeViewMode(bool enabled)
 {
-    this->m_treeViewMode = enabled;
-    CFG->ProcessTreeView = enabled;
-
-    if (enabled)
-    {
-        this->m_treeModel->SetProcesses(this->m_lastProcessSnapshot.isEmpty() ? this->m_model->GetProcesses() : this->m_lastProcessSnapshot);
-        if (this->m_treeModel->rowCount() > 0)
-            this->m_treeView->resizeColumnToContents(OS::ProcessTreeModel::ColName);
-    }
-
-    if (!this->m_treeView || !this->ui->tableView)
-        return;
-
-    this->ui->tableView->setVisible(!enabled);
-    this->m_treeView->setVisible(enabled);
+    this->setViewMode(enabled ? ViewMode::Tree : ViewMode::Table);
 }
 
 void ProcessesWidget::SetActive(bool active)
@@ -448,7 +497,7 @@ void ProcessesWidget::onRefreshFinished(int consumer, quint64 token, const QList
     pid_t treeCurrentPid = 0;
     int treeScroll = 0;
 
-    if (!this->m_treeViewMode)
+    if (this->m_viewMode == ViewMode::Table)
     {
         tableSnapshot = UIHelper::CaptureTableSelection(this->ui->tableView, OS::ProcessModel::ColPid, std::bind(&ProcessesWidget::tableSelectionKeyFromProxy, this, std::placeholders::_1));
     } else
@@ -470,16 +519,14 @@ void ProcessesWidget::onRefreshFinished(int consumer, quint64 token, const QList
             treeScroll = sb->value();
     }
     this->m_lastProcessSnapshot = processes;
-    if (this->m_appRegistry)
-        this->m_appRegistry->Annotate(this->m_lastProcessSnapshot);
-    this->m_model->SetProcesses(this->m_lastProcessSnapshot);
 
-    if (this->m_treeViewMode)
+    if (this->m_viewMode != ViewMode::Table)
     {
         this->m_treeModel->SetProcesses(this->m_lastProcessSnapshot);
         this->restoreTreeStateDeferred(expandedPids, treeSelection, treeCurrentPid, treeScroll);
     } else
     {
+        this->m_model->SetProcesses(this->m_lastProcessSnapshot);
         UIHelper::RestoreTableSelection(
             this->ui->tableView,
             OS::ProcessModel::ColPid,
@@ -583,13 +630,22 @@ void ProcessesWidget::syncAllProcessColumnVisibility()
 bool ProcessesWidget::anyIOMetricsColumnVisible() const
 {
     const QHeaderView *tableHeader = this->ui && this->ui->tableView ? this->ui->tableView->horizontalHeader() : nullptr;
-    if (!tableHeader)
+    const QHeaderView *treeHeader = this->m_treeView ? this->m_treeView->header() : nullptr;
+    if (!tableHeader && !treeHeader)
         return false;
 
-    return !tableHeader->isSectionHidden(OS::ProcessModel::ColIoReads)
-           || !tableHeader->isSectionHidden(OS::ProcessModel::ColIoWrites)
-           || !tableHeader->isSectionHidden(OS::ProcessModel::ColIoReadsPerSec)
-           || !tableHeader->isSectionHidden(OS::ProcessModel::ColIoWritesPerSec);
+    auto isVisible = [&](int col) {
+        if (tableHeader && !tableHeader->isSectionHidden(col))
+            return true;
+        if (treeHeader && !treeHeader->isSectionHidden(col))
+            return true;
+        return false;
+    };
+
+    return isVisible(OS::ProcessModel::ColIoReads)
+           || isVisible(OS::ProcessModel::ColIoWrites)
+           || isVisible(OS::ProcessModel::ColIoReadsPerSec)
+           || isVisible(OS::ProcessModel::ColIoWritesPerSec);
 }
 
 void ProcessesWidget::updateIOMetricsEnabledState(bool triggerImmediateRefresh)
@@ -663,21 +719,26 @@ void ProcessesWidget::onTableContextMenu(const QPoint &pos)
     otherUsersAct->setChecked(this->m_proxy->ShowOtherUsersProcs);
     connect(otherUsersAct, &QAction::toggled, this, &ProcessesWidget::setShowOtherUsersProcesses);
 
-    QAction *iconsAct = viewMenu->addAction(tr("Show icons"));
-    iconsAct->setCheckable(true);
-    iconsAct->setChecked(CFG->ShowProcessIcons);
-    connect(iconsAct, &QAction::toggled, this, &ProcessesWidget::setShowIcons);
-
     viewMenu->addSeparator();
-    QAction *tableModeAct = viewMenu->addAction(tr("Table view"));
-    tableModeAct->setCheckable(true);
-    tableModeAct->setChecked(!this->m_treeViewMode);
-    connect(tableModeAct, &QAction::triggered, this, [this]() { this->setTreeViewMode(false); });
+    QActionGroup *modeGroup = new QActionGroup(this);
 
-    QAction *treeModeAct = viewMenu->addAction(tr("Tree view"));
+    QAction *groupedAct = viewMenu->addAction(tr("Group by application"));
+    groupedAct->setCheckable(true);
+    groupedAct->setActionGroup(modeGroup);
+    groupedAct->setChecked(this->m_viewMode == ViewMode::Grouped);
+    connect(groupedAct, &QAction::triggered, this, [this]() { this->setViewMode(ViewMode::Grouped); });
+
+    QAction *tableModeAct = viewMenu->addAction(tr("Table view (flat)"));
+    tableModeAct->setCheckable(true);
+    tableModeAct->setActionGroup(modeGroup);
+    tableModeAct->setChecked(this->m_viewMode == ViewMode::Table);
+    connect(tableModeAct, &QAction::triggered, this, [this]() { this->setViewMode(ViewMode::Table); });
+
+    QAction *treeModeAct = viewMenu->addAction(tr("Tree view (process tree)"));
     treeModeAct->setCheckable(true);
-    treeModeAct->setChecked(this->m_treeViewMode);
-    connect(treeModeAct, &QAction::triggered, this, [this]() { this->setTreeViewMode(true); });
+    treeModeAct->setActionGroup(modeGroup);
+    treeModeAct->setChecked(this->m_viewMode == ViewMode::Tree);
+    connect(treeModeAct, &QAction::triggered, this, [this]() { this->setViewMode(ViewMode::Tree); });
     // ── Send signal submenu — requires selection ────────────────────────────
     menu.addSeparator();
     QMenu *signalMenu = menu.addMenu(tr("Send signal"));
@@ -740,8 +801,39 @@ void ProcessesWidget::onTableContextMenu(const QPoint &pos)
 void ProcessesWidget::onTreeContextMenu(const QPoint &pos)
 {
     this->m_tableContextMenuOpen = true;
+
+    const QModelIndex clickedIndex = this->m_treeView->indexAt(pos);
+    const QModelIndex targetIndex = clickedIndex.isValid() ? clickedIndex : this->m_treeView->currentIndex();
+    this->m_contextMenuTargetIndex = targetIndex;
+    const bool hasTargetCell = targetIndex.isValid();
+    const QModelIndexList selectedRowsIdx = this->m_treeView->selectionModel() ? this->m_treeView->selectionModel()->selectedRows() : QModelIndexList();
+    const bool multipleRowsSelected = selectedRowsIdx.size() > 1;
+    const bool hasRowTarget = hasTargetCell || !selectedRowsIdx.isEmpty();
+
+    const QList<pid_t> pids = this->selectedPids();
+    const bool hasSelection = !pids.isEmpty();
+
     QMenu menu(this);
 
+    // ── Copy submenu ────────────────────────────────────────────────────────
+    QMenu *copyMenu = menu.addMenu(tr("Copy"));
+
+    QAction *copyRowAct = copyMenu->addAction(tr("Entire row"));
+    copyRowAct->setEnabled(hasRowTarget);
+    connect(copyRowAct, &QAction::triggered, this, &ProcessesWidget::copyRowSelectionToClipboard);
+
+    QAction *copyCellAct = copyMenu->addAction(tr("Selected cell"));
+    copyCellAct->setEnabled(hasTargetCell && !multipleRowsSelected);
+    connect(copyCellAct, &QAction::triggered, this, &ProcessesWidget::copyCellSelectionToClipboard);
+
+    QString copyPIDLabel = (pids.size() > 1) ? tr("PIDs") : tr("PID");
+    QAction *copyPidAct = copyMenu->addAction(copyPIDLabel);
+    copyPidAct->setEnabled(hasSelection);
+    connect(copyPidAct, &QAction::triggered, this, &ProcessesWidget::copySelectedPidsToClipboard);
+
+    menu.addSeparator();
+
+    // ── View submenu — always visible ────────────────────────────────────────
     QMenu *viewMenu = menu.addMenu(tr("View"));
     QAction *kernelAct = viewMenu->addAction(tr("Kernel tasks"));
     kernelAct->setCheckable(true);
@@ -753,24 +845,57 @@ void ProcessesWidget::onTreeContextMenu(const QPoint &pos)
     otherUsersAct->setChecked(this->m_proxy->ShowOtherUsersProcs);
     connect(otherUsersAct, &QAction::toggled, this, &ProcessesWidget::setShowOtherUsersProcesses);
 
-    QAction *iconsAct = viewMenu->addAction(tr("Show icons"));
-    iconsAct->setCheckable(true);
-    iconsAct->setChecked(CFG->ShowProcessIcons);
-    connect(iconsAct, &QAction::toggled, this, &ProcessesWidget::setShowIcons);
-
     viewMenu->addSeparator();
-    QAction *tableModeAct = viewMenu->addAction(tr("Table view"));
+    QActionGroup *modeGroup = new QActionGroup(this);
+
+    QAction *groupedAct = viewMenu->addAction(tr("Group by application"));
+    groupedAct->setCheckable(true);
+    groupedAct->setActionGroup(modeGroup);
+    groupedAct->setChecked(this->m_viewMode == ViewMode::Grouped);
+    connect(groupedAct, &QAction::triggered, this, [this]() { this->setViewMode(ViewMode::Grouped); });
+
+    QAction *tableModeAct = viewMenu->addAction(tr("Table view (flat)"));
     tableModeAct->setCheckable(true);
-    tableModeAct->setChecked(!this->m_treeViewMode);
-    connect(tableModeAct, &QAction::triggered, this, [this]() { this->setTreeViewMode(false); });
+    tableModeAct->setActionGroup(modeGroup);
+    tableModeAct->setChecked(this->m_viewMode == ViewMode::Table);
+    connect(tableModeAct, &QAction::triggered, this, [this]() { this->setViewMode(ViewMode::Table); });
 
-    QAction *treeModeAct = viewMenu->addAction(tr("Tree view"));
+    QAction *treeModeAct = viewMenu->addAction(tr("Tree view (process tree)"));
     treeModeAct->setCheckable(true);
-    treeModeAct->setChecked(this->m_treeViewMode);
-    connect(treeModeAct, &QAction::triggered, this, [this]() { this->setTreeViewMode(true); });
+    treeModeAct->setActionGroup(modeGroup);
+    treeModeAct->setChecked(this->m_viewMode == ViewMode::Tree);
+    connect(treeModeAct, &QAction::triggered, this, [this]() { this->setViewMode(ViewMode::Tree); });
 
-    const QList<pid_t> pids = this->selectedPids();
-    const bool hasSelection = !pids.isEmpty();
+    // ── Send signal submenu — requires selection ────────────────────────────
+    menu.addSeparator();
+    QMenu *signalMenu = menu.addMenu(tr("Send signal"));
+    signalMenu->setEnabled(hasSelection);
+
+    struct { const char *label; int sig; } commonSignals[] =
+    {
+        { "SIGTERM  (15) — Terminate",   SIGTERM  },
+        { "SIGKILL   (9) — Kill (force)", SIGKILL  },
+        { "SIGHUP    (1) — Hangup",       SIGHUP   },
+        { "SIGSTOP  (19) — Stop",         SIGSTOP  },
+        { "SIGCONT  (18) — Continue",     SIGCONT  },
+        { "SIGINT    (2) — Interrupt",    SIGINT   },
+        { "SIGUSR1  (10) — User 1",       SIGUSR1  },
+        { "SIGUSR2  (12) — User 2",       SIGUSR2  },
+    };
+    for (const auto &s : commonSignals)
+    {
+        QAction *a = signalMenu->addAction(tr(s.label));
+        a->setData(s.sig);
+        connect(a, &QAction::triggered, this, [this, s]()
+        {
+            this->sendSignalToSelected(s.sig);
+        });
+    }
+
+    signalMenu->addSeparator();
+    QAction *customSig = signalMenu->addAction(tr("Custom signal..."));
+    connect(customSig, &QAction::triggered, this, &ProcessesWidget::promptAndSendCustomSignal);
+
     menu.addSeparator();
     QAction *termAction = menu.addAction(tr("Terminate  (SIGTERM)"));
     termAction->setEnabled(hasSelection);
@@ -791,6 +916,7 @@ void ProcessesWidget::onTreeContextMenu(const QPoint &pos)
 
     menu.exec(this->m_treeView->viewport()->mapToGlobal(pos));
 
+    this->m_contextMenuTargetIndex = QModelIndex();
     this->m_tableContextMenuOpen = false;
     if (this->m_active && this->m_refreshPending && !CFG->RefreshPaused)
         this->startRefresh();
@@ -815,30 +941,74 @@ void ProcessesWidget::updateStatusBar()
 
 void ProcessesWidget::copyRowSelectionToClipboard()
 {
-    if (!this->ui->tableView || !this->ui->tableView->model())
-        return;
-
-    QModelIndexList selectedRowsIdx = this->ui->tableView->selectionModel()
-                                      ? this->ui->tableView->selectionModel()->selectedRows()
-                                      : QModelIndexList();
-    QList<int> selectedRows;
-    selectedRows.reserve(selectedRowsIdx.size());
-    for (const QModelIndex &idx : selectedRowsIdx)
-        selectedRows.append(idx.row());
-    std::sort(selectedRows.begin(), selectedRows.end());
-
-    const QModelIndex targetIndex = this->m_contextMenuTargetIndex.isValid()
-                                    ? this->m_contextMenuTargetIndex
-                                    : this->ui->tableView->currentIndex();
-
-    if (selectedRows.size() > 1)
+    if (this->m_viewMode == ViewMode::Table)
     {
-        QGuiApplication::clipboard()->setText(UIHelper::GetVisibleRowsText(this->ui->tableView, selectedRows));
-        return;
-    }
+        if (!this->ui->tableView || !this->ui->tableView->model())
+            return;
 
-    const int row = targetIndex.isValid() ? targetIndex.row() : selectedRows.value(0, -1);
-    QGuiApplication::clipboard()->setText(UIHelper::GetVisibleRowText(this->ui->tableView, row));
+        QModelIndexList selectedRowsIdx = this->ui->tableView->selectionModel()
+                                          ? this->ui->tableView->selectionModel()->selectedRows()
+                                          : QModelIndexList();
+        QList<int> selectedRows;
+        selectedRows.reserve(selectedRowsIdx.size());
+        for (const QModelIndex &idx : selectedRowsIdx)
+            selectedRows.append(idx.row());
+        std::sort(selectedRows.begin(), selectedRows.end());
+
+        const QModelIndex targetIndex = this->m_contextMenuTargetIndex.isValid()
+                                        ? this->m_contextMenuTargetIndex
+                                        : this->ui->tableView->currentIndex();
+
+        if (selectedRows.size() > 1)
+        {
+            QGuiApplication::clipboard()->setText(UIHelper::GetVisibleRowsText(this->ui->tableView, selectedRows));
+            return;
+        }
+
+        const int row = targetIndex.isValid() ? targetIndex.row() : selectedRows.value(0, -1);
+        QGuiApplication::clipboard()->setText(UIHelper::GetVisibleRowText(this->ui->tableView, row));
+    }
+    else
+    {
+        if (!this->m_treeView || !this->m_treeView->model())
+            return;
+
+        const QModelIndexList selectedRowsIdx = this->m_treeView->selectionModel()
+                                                ? this->m_treeView->selectionModel()->selectedRows()
+                                                : QModelIndexList();
+        const QModelIndex targetIndex = this->m_contextMenuTargetIndex.isValid()
+                                        ? this->m_contextMenuTargetIndex
+                                        : this->m_treeView->currentIndex();
+
+        auto getTreeRowText = [this](const QModelIndex &rowIdx) -> QString {
+            if (!rowIdx.isValid())
+                return QString();
+            const QAbstractItemModel *model = this->m_treeView->model();
+            const QHeaderView *header = this->m_treeView->header();
+            QStringList parts;
+            const int cols = model->columnCount(rowIdx.parent());
+            for (int col = 0; col < cols; ++col)
+            {
+                if (header && header->isSectionHidden(col))
+                    continue;
+                const QModelIndex cellIdx = model->index(rowIdx.row(), col, rowIdx.parent());
+                parts << model->data(cellIdx, Qt::DisplayRole).toString();
+            }
+            return parts.join('\t');
+        };
+
+        if (selectedRowsIdx.size() > 1)
+        {
+            QStringList lines;
+            for (const QModelIndex &idx : selectedRowsIdx)
+                lines << getTreeRowText(idx);
+            QGuiApplication::clipboard()->setText(lines.join('\n'));
+            return;
+        }
+
+        const QModelIndex rowToCopy = targetIndex.isValid() ? targetIndex : selectedRowsIdx.value(0);
+        QGuiApplication::clipboard()->setText(getTreeRowText(rowToCopy));
+    }
 }
 
 QVariant ProcessesWidget::tableSelectionKeyFromProxy(const QModelIndex &proxyKeyIndex) const
@@ -851,16 +1021,32 @@ QVariant ProcessesWidget::tableSelectionKeyFromProxy(const QModelIndex &proxyKey
 
 void ProcessesWidget::copyCellSelectionToClipboard()
 {
-    if (!this->ui->tableView || !this->ui->tableView->model())
-        return;
+    if (this->m_viewMode == ViewMode::Table)
+    {
+        if (!this->ui->tableView || !this->ui->tableView->model())
+            return;
 
-    const QModelIndex targetIndex = this->m_contextMenuTargetIndex.isValid()
-                                    ? this->m_contextMenuTargetIndex
-                                    : this->ui->tableView->currentIndex();
-    if (!targetIndex.isValid())
-        return;
+        const QModelIndex targetIndex = this->m_contextMenuTargetIndex.isValid()
+                                        ? this->m_contextMenuTargetIndex
+                                        : this->ui->tableView->currentIndex();
+        if (!targetIndex.isValid())
+            return;
 
-    QGuiApplication::clipboard()->setText(this->ui->tableView->model()->data(targetIndex, Qt::DisplayRole).toString());
+        QGuiApplication::clipboard()->setText(this->ui->tableView->model()->data(targetIndex, Qt::DisplayRole).toString());
+    }
+    else
+    {
+        if (!this->m_treeView || !this->m_treeView->model())
+            return;
+
+        const QModelIndex targetIndex = this->m_contextMenuTargetIndex.isValid()
+                                        ? this->m_contextMenuTargetIndex
+                                        : this->m_treeView->currentIndex();
+        if (!targetIndex.isValid())
+            return;
+
+        QGuiApplication::clipboard()->setText(this->m_treeView->model()->data(targetIndex, Qt::DisplayRole).toString());
+    }
 }
 
 void ProcessesWidget::copySelectedPidsToClipboard()
@@ -942,32 +1128,6 @@ void ProcessesWidget::setShowOtherUsersProcesses(bool checked)
     LOG_DEBUG(QString("ShowOtherUsersProcs = %1").arg(checked));
 }
 
-void ProcessesWidget::setShowIcons(bool checked)
-{
-    CFG->ShowProcessIcons = checked;
-    this->applyIconSetting();
-    this->onTimerTick();
-    LOG_DEBUG(QString("ShowProcessIcons = %1").arg(checked));
-}
-
-// Creates or drops the registry according to the setting and points both models at it.
-void ProcessesWidget::applyIconSetting()
-{
-    if (CFG->ShowProcessIcons && !this->m_appRegistry)
-    {
-        this->m_appRegistry = new OS::AppRegistry(this);
-    } else if (!CFG->ShowProcessIcons && this->m_appRegistry)
-    {
-        delete this->m_appRegistry;
-        this->m_appRegistry = nullptr;
-    }
-    this->m_model->SetAppRegistry(this->m_appRegistry);
-    this->m_treeModel->SetAppRegistry(this->m_appRegistry);
-    // Rows whose data did not change emit no dataChanged, so repaint to add or drop their icons.
-    this->ui->tableView->viewport()->update();
-    this->m_treeView->viewport()->update();
-}
-
 void ProcessesWidget::captureExpandedTreePids(const QModelIndex &parentProxy, QSet<pid_t> &expandedPids) const
 {
     const int rows = this->m_treeProxy->rowCount(parentProxy);
@@ -1041,7 +1201,7 @@ void ProcessesWidget::restoreTreeStateDeferred(const QSet<pid_t> &expandedPids,
 QList<pid_t> ProcessesWidget::selectedPids() const
 {
     QList<pid_t> pids;
-    if (!this->m_treeViewMode)
+    if (this->m_viewMode == ViewMode::Table)
     {
         const QModelIndexList rows = this->ui->tableView->selectionModel()->selectedRows(OS::ProcessModel::ColPid);
         pids.reserve(rows.size());
@@ -1054,13 +1214,22 @@ QList<pid_t> ProcessesWidget::selectedPids() const
     } else if (this->m_treeView && this->m_treeView->selectionModel())
     {
         const QModelIndexList rows = this->m_treeView->selectionModel()->selectedRows(OS::ProcessTreeModel::ColPid);
-        pids.reserve(rows.size());
         for (const QModelIndex &proxyIdx : rows)
         {
             const QModelIndex srcIdx = this->m_treeProxy->mapToSource(proxyIdx);
-            const QVariant v = this->m_treeModel->data(srcIdx, Qt::UserRole);
-            pids.append(static_cast<pid_t>(v.toLongLong()));
+            pids.append(this->m_treeModel->PidsForIndex(srcIdx));
         }
+        QList<pid_t> uniquePids;
+        QSet<pid_t> seen;
+        for (pid_t pid : pids)
+        {
+            if (!seen.contains(pid))
+            {
+                seen.insert(pid);
+                uniquePids.append(pid);
+            }
+        }
+        return uniquePids;
     }
     return pids;
 }

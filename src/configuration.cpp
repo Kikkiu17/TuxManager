@@ -88,7 +88,7 @@ void Configuration::Load()
     // Processes
     this->ShowKernelTasks        = s.value("Processes/ShowKernelTasks",     this->ShowKernelTasks).toBool();
     this->ShowOtherUsersProcs    = s.value("Processes/ShowOtherUsersProcs", this->ShowOtherUsersProcs).toBool();
-    this->ShowProcessIcons       = s.value("Processes/ShowIcons",           this->ShowProcessIcons).toBool();
+    this->ProcessViewMode        = s.value("Processes/ViewMode",            this->ProcessViewMode).toInt();
     this->ProcessTreeView        = s.value("Processes/TreeView",            this->ProcessTreeView).toBool();
     this->ProcessListSortColumn  = s.value("Processes/SortColumn",          this->ProcessListSortColumn).toInt();
     this->ProcessListSortOrder   = s.value("Processes/SortOrder",           this->ProcessListSortOrder).toInt();
@@ -134,6 +134,8 @@ void Configuration::Load()
     this->PerfNetworkUseBits =  s.value("Performance/NetworkUseBits",    this->PerfNetworkUseBits).toBool();
     this->PerfGraphWindowSec =  s.value("Performance/GraphWindowSec",    this->PerfGraphWindowSec).toInt();
     this->PerfSidePanelGroupOrder = s.value("Performance/SidePanelGroupOrder", this->PerfSidePanelGroupOrder).toStringList();
+    this->PerfHiddenDevices       = s.value("Performance/HiddenDevices",       this->PerfHiddenDevices).toStringList();
+    this->PerfHideVirtualNetworks = s.value("Performance/HideVirtualNetworks", this->PerfHideVirtualNetworks).toBool();
     this->PerformanceSplitterState = s.value("Performance/SplitterState",     this->PerformanceSplitterState).toByteArray();
 
     // For now this is hardcoded, we may want to make it customizable later
@@ -176,7 +178,7 @@ void Configuration::Save()
     // Processes
     s.setValue("Processes/ShowKernelTasks",     this->ShowKernelTasks);
     s.setValue("Processes/ShowOtherUsersProcs", this->ShowOtherUsersProcs);
-    s.setValue("Processes/ShowIcons",           this->ShowProcessIcons);
+    s.setValue("Processes/ViewMode",            this->ProcessViewMode);
     s.setValue("Processes/TreeView",            this->ProcessTreeView);
     s.setValue("Processes/SortColumn",          this->ProcessListSortColumn);
     s.setValue("Processes/SortOrder",           this->ProcessListSortOrder);
@@ -208,6 +210,8 @@ void Configuration::Save()
     s.setValue("Performance/NetworkUseBits",            this->PerfNetworkUseBits);
     s.setValue("Performance/GraphWindowSec",            this->PerfGraphWindowSec);
     s.setValue("Performance/SidePanelGroupOrder",       this->PerfSidePanelGroupOrder);
+    s.setValue("Performance/HiddenDevices",             this->PerfHiddenDevices);
+    s.setValue("Performance/HideVirtualNetworks",       this->PerfHideVirtualNetworks);
     s.setValue("Performance/SplitterState",             this->PerformanceSplitterState);
 
     s.sync();

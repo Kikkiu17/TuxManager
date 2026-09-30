@@ -46,7 +46,7 @@
    <!-- Graph container — CpuGraphArea is inserted here at runtime -->
    <item>
     <widget class="QWidget" name="graphAreaContainer">
-     <property name="minimumHeight"><number>180</number></property>
+     <property name="minimumHeight"><number>35</number></property>
      <property name="sizePolicy">
       <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
        <horstretch>0</horstretch>

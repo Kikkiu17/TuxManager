@@ -32,6 +32,7 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QFile>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QMenu>
@@ -105,6 +106,19 @@ namespace
         return sanitized;
     }
 
+    class PerformanceStackedWidget : public QStackedWidget
+    {
+        public:
+            using QStackedWidget::QStackedWidget;
+
+            QSize minimumSizeHint() const override
+            {
+                if (QWidget *w = this->currentWidget())
+                    return w->minimumSizeHint();
+                return QSize(200, 150);
+            }
+    };
+
     QStringList serializeSidePanelGroupOrder(const QList<Perf::SidePanelGroup> &order)
     {
         QStringList out;
@@ -129,7 +143,7 @@ PerformanceWidget::PerformanceWidget(QWidget *parent) : QWidget(parent), ui(new 
     Metrics::Get();
 
     this->m_sidePanel = new Perf::SidePanel(this);
-    this->m_stack = new QStackedWidget(this);
+    this->m_stack = new PerformanceStackedWidget(this);
     this->m_cpuDetail = new Perf::CpuDetailWidget(this);
     this->m_memDetail = new Perf::MemoryDetailWidget(this);
     this->m_swapDetail = new Perf::SwapDetailWidget(this);
@@ -162,6 +176,12 @@ PerformanceWidget::PerformanceWidget(QWidget *parent) : QWidget(parent), ui(new 
     this->applyGraphWindowSeconds();
     this->applyPanelVisibility();
     this->updateSamplingPolicy();
+    if (this->m_sidePanel->GetCurrentItem())
+    {
+        QWidget *detail = this->m_detailByItem.value(this->m_sidePanel->GetCurrentItem(), nullptr);
+        if (detail)
+            this->m_stack->setCurrentWidget(detail);
+    }
     Metrics::Get()->SetProcessStatsEnabled(this->m_sidePanel->GetCurrentItem() == this->m_cpuItem && CFG->PerfShowCpu);
 
     this->SetActive(false);
@@ -215,6 +235,9 @@ void PerformanceWidget::setupSidePanel()
     this->m_cpuItem = new Perf::SidePanelItem(tr("CPU"), this);
     this->m_cpuItem->SetGraphColor(scheme->CpuGraphLineColor, scheme->CpuGraphFillColor);
     this->m_cpuItem->SetGraphSource(Metrics::GetCPU()->CpuHistory());
+    this->m_cpuItem->setProperty("deviceId", "cpu");
+    this->m_cpuItem->setProperty("deviceName", tr("CPU"));
+    this->m_cpuItem->setProperty("deviceGroup", static_cast<int>(Perf::SidePanelGroup::Cpu));
     this->m_sidePanel->AddItem(this->m_cpuItem);
     this->m_stack->addWidget(this->m_cpuDetail);
     this->m_detailByItem.insert(this->m_cpuItem, this->m_cpuDetail);
@@ -225,6 +248,9 @@ void PerformanceWidget::setupSidePanel()
     this->m_memoryItem = new Perf::SidePanelItem(tr("Memory"), this);
     this->m_memoryItem->SetGraphColor(scheme->MemoryGraphLineColor, scheme->MemoryGraphFillColor);
     this->m_memoryItem->SetGraphSource(Metrics::GetMemory()->MemHistory());
+    this->m_memoryItem->setProperty("deviceId", "memory");
+    this->m_memoryItem->setProperty("deviceName", tr("Memory"));
+    this->m_memoryItem->setProperty("deviceGroup", static_cast<int>(Perf::SidePanelGroup::Memory));
     this->m_sidePanel->AddItem(this->m_memoryItem);
     this->m_stack->addWidget(this->m_memDetail);
     this->m_detailByItem.insert(this->m_memoryItem, this->m_memDetail);
@@ -235,6 +261,9 @@ void PerformanceWidget::setupSidePanel()
     this->m_swapItem = new Perf::SidePanelItem(tr("Swap"), this);
     this->m_swapItem->SetGraphColor(scheme->SwapUsageGraphLineColor, scheme->SwapUsageGraphFillColor);
     this->m_swapItem->SetGraphSource(Metrics::GetSwap()->SwapUsageHistory());
+    this->m_swapItem->setProperty("deviceId", "swap");
+    this->m_swapItem->setProperty("deviceName", tr("Swap"));
+    this->m_swapItem->setProperty("deviceGroup", static_cast<int>(Perf::SidePanelGroup::Swap));
     this->m_sidePanel->AddItem(this->m_swapItem);
     this->m_stack->addWidget(this->m_swapDetail);
     this->m_detailByItem.insert(this->m_swapItem, this->m_swapDetail);
@@ -242,6 +271,16 @@ void PerformanceWidget::setupSidePanel()
     this->setupDiskPanels();
     this->setupNetworkPanels();
     this->setupGpuPanels();
+
+    this->installSidebarToggle(this->m_cpuDetail);
+    this->installSidebarToggle(this->m_memDetail);
+    this->installSidebarToggle(this->m_swapDetail);
+    for (auto *disk : this->m_diskDetails)
+        this->installSidebarToggle(disk);
+    for (auto *net : this->m_networkDetails)
+        this->installSidebarToggle(net);
+    for (auto *gpu : this->m_gpuDetails)
+        this->installSidebarToggle(gpu);
 }
 
 void PerformanceWidget::setupDiskPanels()
@@ -256,6 +295,9 @@ void PerformanceWidget::setupDiskPanels()
         auto *item = new Perf::SidePanelItem(tr("Disk (%1)").arg(disk.Name), this);
         item->SetGraphColor(scheme->DiskGraphLineColor, scheme->DiskGraphFillColor);
         item->SetGraphSource(disk.ActiveHistory);
+        item->setProperty("deviceId", QString("disk:%1").arg(disk.Name));
+        item->setProperty("deviceName", tr("Disk (%1)").arg(disk.Name));
+        item->setProperty("deviceGroup", static_cast<int>(Perf::SidePanelGroup::Disks));
         this->m_sidePanel->AddItem(item);
         this->m_diskItems.append(item);
 
@@ -279,6 +321,9 @@ void PerformanceWidget::setupGpuPanels()
         auto *item = new Perf::SidePanelItem(tr("GPU %1").arg(i), this);
         item->SetGraphColor(scheme->GpuGraphLineColor, scheme->GpuGraphFillColor);
         item->SetGraphSource(gpu.UtilHistory);
+        item->setProperty("deviceId", QString("gpu:%1").arg(i));
+        item->setProperty("deviceName", tr("GPU %1").arg(i));
+        item->setProperty("deviceGroup", static_cast<int>(Perf::SidePanelGroup::Gpu));
         this->m_sidePanel->AddItem(item);
         this->m_gpuItems.append(item);
 
@@ -302,6 +347,13 @@ void PerformanceWidget::setupNetworkPanels()
         auto *item = new Perf::SidePanelItem(tr("NIC (%1)").arg(network.Name), this);
         item->SetGraphColor(scheme->NetworkGraphLineColor, scheme->NetworkGraphFillColor);
         item->SetGraphSource(network.RxHistory, 1024.0);
+
+        const bool isVirtual = QFile::exists(QString("/sys/devices/virtual/net/%1").arg(network.Name));
+        item->setProperty("deviceId", QString("net:%1").arg(network.Name));
+        item->setProperty("deviceName", tr("NIC (%1)").arg(network.Name));
+        item->setProperty("isVirtualNetwork", isVirtual);
+        item->setProperty("deviceGroup", static_cast<int>(Perf::SidePanelGroup::Network));
+
         this->m_sidePanel->AddItem(item);
         this->m_networkItems.append(item);
 
@@ -326,7 +378,7 @@ void PerformanceWidget::onProviderUpdated()
                            ? tr("%1%2 %3C", "%1=value %2=percent sign %3=temperature in Celsius")
                                  .arg(QString::number(cpuPct, 'f', 0), "%", QString::number(cpuTempC))
                            : QString::number(cpuPct, 'f', 0) + "%";
-    if (CFG->PerfShowCpu)
+    if (this->m_sidePanel->IsItemVisible(this->m_cpuItem))
         this->m_cpuItem->Update(cpuSub);
 
     // Update Memory side panel item
@@ -339,7 +391,7 @@ void PerformanceWidget::onProviderUpdated()
                            .arg(Misc::FormatKiB(static_cast<quint64>(qMax<qint64>(0, used)), 1),
                                 Misc::FormatKiB(static_cast<quint64>(qMax<qint64>(0, total)), 1),
                                 QString::number(pct));
-    if (CFG->PerfShowMemory)
+    if (this->m_sidePanel->IsItemVisible(this->m_memoryItem))
         this->m_memoryItem->Update(memSub);
 
     // Update Swap side panel item
@@ -360,7 +412,7 @@ void PerformanceWidget::onProviderUpdated()
         swapSub = tr("Off");
     }
 
-    if (CFG->PerfShowSwap)
+    if (this->m_sidePanel->IsItemVisible(this->m_swapItem))
         this->m_swapItem->Update(swapSub);
 
     if (CFG->PerfShowDisks)
@@ -370,7 +422,7 @@ void PerformanceWidget::onProviderUpdated()
             if (i >= Metrics::GetStorage()->DiskCount())
                 break;
             auto *item = this->m_diskItems.at(i);
-            if (!item)
+            if (!item || !this->m_sidePanel->IsItemVisible(item))
                 continue;
 
             const Storage::DiskInfo &disk = Metrics::GetStorage()->FromIndex(i);
@@ -386,7 +438,7 @@ void PerformanceWidget::onProviderUpdated()
             if (i >= Metrics::GetGPU()->GpuCount())
                 break;
             auto *item = this->m_gpuItems.at(i);
-            if (!item)
+            if (!item || !this->m_sidePanel->IsItemVisible(item))
                 continue;
 
             const GPU::GPUInfo &gpu = Metrics::GetGPU()->FromIndex(i);
@@ -407,7 +459,7 @@ void PerformanceWidget::onProviderUpdated()
             if (i >= Metrics::GetNetwork()->NetworkCount())
                 break;
             auto *item = this->m_networkItems.at(i);
-            if (!item)
+            if (!item || !this->m_sidePanel->IsItemVisible(item))
                 continue;
 
             const Network::NetworkInfo &network = Metrics::GetNetwork()->FromIndex(i);
@@ -429,55 +481,183 @@ void PerformanceWidget::SetActive(bool active)
         return;
 
     this->m_active = active;
+    if (active)
+    {
+        this->applyPanelVisibility();
+        this->updateSamplingPolicy();
+    }
     Metrics::Get()->SetActive(active);
     if (active)
         this->onProviderUpdated();
 }
 
-void PerformanceWidget::onSidePanelContextMenu(Perf::SidePanelItem * /*item*/, const QPoint &globalPos)
+void PerformanceWidget::onSidePanelContextMenu(Perf::SidePanelItem *item, const QPoint &globalPos)
 {
     QMenu menu(this);
+
+    // Count visible items to prevent hiding the last visible item
+    int visibleCount = 0;
+    if (this->m_sidePanel->IsItemVisible(this->m_cpuItem)) visibleCount++;
+    if (this->m_sidePanel->IsItemVisible(this->m_memoryItem)) visibleCount++;
+    if (this->m_sidePanel->IsItemVisible(this->m_swapItem)) visibleCount++;
+    for (Perf::SidePanelItem *it : std::as_const(this->m_diskItems))
+        if (this->m_sidePanel->IsItemVisible(it)) visibleCount++;
+    for (Perf::SidePanelItem *it : std::as_const(this->m_networkItems))
+        if (this->m_sidePanel->IsItemVisible(it)) visibleCount++;
+    for (Perf::SidePanelItem *it : std::as_const(this->m_gpuItems))
+        if (this->m_sidePanel->IsItemVisible(it)) visibleCount++;
+
+    const int totalItems = 3 + this->m_diskItems.size() + this->m_networkItems.size() + this->m_gpuItems.size();
+    const int hiddenCount = qMax(0, totalItems - visibleCount);
+
+    QAction *hideCurrentItem = nullptr;
+    QAction *hideAllVirtualNets = nullptr;
+
+    if (item)
+    {
+        const QString devName = item->property("deviceName").toString();
+        if (!devName.isEmpty())
+        {
+            hideCurrentItem = menu.addAction(tr("Hide '%1'").arg(devName));
+            if (visibleCount <= 1)
+                hideCurrentItem->setEnabled(false);
+        }
+
+        if (item->property("isVirtualNetwork").toBool() && !CFG->PerfHideVirtualNetworks)
+        {
+            hideAllVirtualNets = menu.addAction(tr("Hide all virtual networks"));
+        }
+
+        menu.addSeparator();
+    }
 
     QAction *cpu = nullptr;
     QAction *memory = nullptr;
     QAction *swap = nullptr;
-    QAction *disks = nullptr;
-    QAction *network = nullptr;
-    QAction *gpu = nullptr;
+
+    QAction *showAllDisks = nullptr;
+    QHash<QAction *, QString> diskActionMap;
+
+    QAction *showAllNet = nullptr;
+    QAction *hideVirtualNet = nullptr;
+    QHash<QAction *, QString> netActionMap;
+
+    QAction *showAllGpu = nullptr;
+    QHash<QAction *, QString> gpuActionMap;
 
     const QList<Perf::SidePanelGroup> groupOrder = sanitizeSidePanelGroupOrder(CFG->PerfSidePanelGroupOrder);
     for (Perf::SidePanelGroup group : groupOrder)
     {
-        QAction *action = menu.addAction(Perf::SidePanelGroupLabel(group));
-        action->setCheckable(true);
-
         switch (group)
         {
             case Perf::SidePanelGroup::Cpu:
-                cpu = action;
-                action->setChecked(CFG->PerfShowCpu);
+            {
+                cpu = menu.addAction(Perf::SidePanelGroupLabel(group));
+                cpu->setCheckable(true);
+                cpu->setChecked(CFG->PerfShowCpu && !CFG->PerfHiddenDevices.contains("cpu"));
                 break;
+            }
             case Perf::SidePanelGroup::Memory:
-                memory = action;
-                action->setChecked(CFG->PerfShowMemory);
+            {
+                memory = menu.addAction(Perf::SidePanelGroupLabel(group));
+                memory->setCheckable(true);
+                memory->setChecked(CFG->PerfShowMemory && !CFG->PerfHiddenDevices.contains("memory"));
                 break;
+            }
             case Perf::SidePanelGroup::Swap:
-                swap = action;
-                action->setChecked(CFG->PerfShowSwap);
+            {
+                swap = menu.addAction(Perf::SidePanelGroupLabel(group));
+                swap->setCheckable(true);
+                swap->setChecked(CFG->PerfShowSwap && !CFG->PerfHiddenDevices.contains("swap"));
                 break;
+            }
             case Perf::SidePanelGroup::Disks:
-                disks = action;
-                action->setChecked(CFG->PerfShowDisks);
+            {
+                QMenu *disksMenu = menu.addMenu(Perf::SidePanelGroupLabel(group));
+                showAllDisks = disksMenu->addAction(tr("Show Disks"));
+                showAllDisks->setCheckable(true);
+                showAllDisks->setChecked(CFG->PerfShowDisks);
+
+                if (!this->m_diskItems.isEmpty())
+                {
+                    disksMenu->addSeparator();
+                    for (Perf::SidePanelItem *diskItem : std::as_const(this->m_diskItems))
+                    {
+                        const QString devId = diskItem->property("deviceId").toString();
+                        const QString devName = diskItem->property("deviceName").toString();
+                        QAction *act = disksMenu->addAction(devName);
+                        act->setCheckable(true);
+                        act->setChecked(CFG->PerfShowDisks && !CFG->PerfHiddenDevices.contains(devId));
+                        act->setEnabled(CFG->PerfShowDisks);
+                        diskActionMap.insert(act, devId);
+                    }
+                }
                 break;
+            }
             case Perf::SidePanelGroup::Network:
-                network = action;
-                action->setChecked(CFG->PerfShowNetwork);
+            {
+                QMenu *netMenu = menu.addMenu(Perf::SidePanelGroupLabel(group));
+                showAllNet = netMenu->addAction(tr("Show Network"));
+                showAllNet->setCheckable(true);
+                showAllNet->setChecked(CFG->PerfShowNetwork);
+
+                hideVirtualNet = netMenu->addAction(tr("Hide virtual networks"));
+                hideVirtualNet->setCheckable(true);
+                hideVirtualNet->setChecked(CFG->PerfHideVirtualNetworks);
+                hideVirtualNet->setEnabled(CFG->PerfShowNetwork);
+
+                if (!this->m_networkItems.isEmpty())
+                {
+                    netMenu->addSeparator();
+                    for (Perf::SidePanelItem *netItem : std::as_const(this->m_networkItems))
+                    {
+                        const QString devId = netItem->property("deviceId").toString();
+                        const QString devName = netItem->property("deviceName").toString();
+                        const bool isVirtual = netItem->property("isVirtualNetwork").toBool();
+                        QString label = devName;
+                        if (isVirtual)
+                            label += tr(" (virtual)");
+                        QAction *act = netMenu->addAction(label);
+                        act->setCheckable(true);
+                        const bool isHidden = CFG->PerfHiddenDevices.contains(devId) || (isVirtual && CFG->PerfHideVirtualNetworks);
+                        act->setChecked(CFG->PerfShowNetwork && !isHidden);
+                        act->setEnabled(CFG->PerfShowNetwork && !(isVirtual && CFG->PerfHideVirtualNetworks));
+                        netActionMap.insert(act, devId);
+                    }
+                }
                 break;
+            }
             case Perf::SidePanelGroup::Gpu:
-                gpu = action;
-                action->setChecked(CFG->PerfShowGpu);
+            {
+                QMenu *gpuMenu = menu.addMenu(Perf::SidePanelGroupLabel(group));
+                showAllGpu = gpuMenu->addAction(tr("Show GPU"));
+                showAllGpu->setCheckable(true);
+                showAllGpu->setChecked(CFG->PerfShowGpu);
+
+                if (!this->m_gpuItems.isEmpty())
+                {
+                    gpuMenu->addSeparator();
+                    for (Perf::SidePanelItem *gpuItem : std::as_const(this->m_gpuItems))
+                    {
+                        const QString devId = gpuItem->property("deviceId").toString();
+                        const QString devName = gpuItem->property("deviceName").toString();
+                        QAction *act = gpuMenu->addAction(devName);
+                        act->setCheckable(true);
+                        act->setChecked(CFG->PerfShowGpu && !CFG->PerfHiddenDevices.contains(devId));
+                        act->setEnabled(CFG->PerfShowGpu);
+                        gpuActionMap.insert(act, devId);
+                    }
+                }
                 break;
+            }
         }
+    }
+
+    QAction *unhideAllMain = nullptr;
+    if (hiddenCount > 0)
+    {
+        menu.addSeparator();
+        unhideAllMain = menu.addAction(tr("Unhide all hidden graphs (%1)").arg(hiddenCount));
     }
 
     menu.addSeparator();
@@ -487,6 +667,12 @@ void PerformanceWidget::onSidePanelContextMenu(Perf::SidePanelItem * /*item*/, c
     QAction *showGrid = settingsMenu->addAction(tr("Show grid in side panel"));
     showGrid->setCheckable(true);
     showGrid->setChecked(CFG->SidePanelGridEnabled);
+
+    settingsMenu->addSeparator();
+    QAction *unhideAllSettings = settingsMenu->addAction(hiddenCount > 0
+        ? tr("Unhide all hidden graphs (%1)").arg(hiddenCount)
+        : tr("Unhide all hidden graphs"));
+    unhideAllSettings->setEnabled(hiddenCount > 0);
 
     menu.addSeparator();
     UIHelper::AddRefreshIntervalContextMenu(&menu, nullptr, this->m_active);
@@ -498,6 +684,58 @@ void PerformanceWidget::onSidePanelContextMenu(Perf::SidePanelItem * /*item*/, c
     QAction *picked = menu.exec(globalPos);
     if (!picked)
         return;
+
+    if (picked == hideCurrentItem && item)
+    {
+        const QString devId = item->property("deviceId").toString();
+        if (devId == "cpu")
+            CFG->PerfShowCpu = false;
+        else if (devId == "memory")
+            CFG->PerfShowMemory = false;
+        else if (devId == "swap")
+            CFG->PerfShowSwap = false;
+        else if (!devId.isEmpty())
+        {
+            if (!CFG->PerfHiddenDevices.contains(devId))
+                CFG->PerfHiddenDevices.append(devId);
+        }
+
+        this->applyPanelVisibility();
+        this->updateSamplingPolicy();
+        CFG->Save();
+        if (this->m_active)
+            this->onProviderUpdated();
+        return;
+    }
+
+    if (picked == hideAllVirtualNets)
+    {
+        CFG->PerfHideVirtualNetworks = true;
+        this->applyPanelVisibility();
+        this->updateSamplingPolicy();
+        CFG->Save();
+        if (this->m_active)
+            this->onProviderUpdated();
+        return;
+    }
+
+    if ((unhideAllMain && picked == unhideAllMain) || picked == unhideAllSettings)
+    {
+        CFG->PerfShowCpu = true;
+        CFG->PerfShowMemory = true;
+        CFG->PerfShowSwap = true;
+        CFG->PerfShowDisks = true;
+        CFG->PerfShowNetwork = true;
+        CFG->PerfShowGpu = true;
+        CFG->PerfHiddenDevices.clear();
+        CFG->PerfHideVirtualNetworks = false;
+        this->applyPanelVisibility();
+        this->updateSamplingPolicy();
+        CFG->Save();
+        if (this->m_active)
+            this->onProviderUpdated();
+        return;
+    }
 
     if (picked == customizeOrder)
     {
@@ -541,38 +779,65 @@ void PerformanceWidget::onSidePanelContextMenu(Perf::SidePanelItem * /*item*/, c
         return;
     }
 
-    bool showCpu = CFG->PerfShowCpu;
-    bool showMemory = CFG->PerfShowMemory;
-    bool showSwap = CFG->PerfShowSwap;
-    bool showDisks = CFG->PerfShowDisks;
-    bool showNetwork = CFG->PerfShowNetwork;
-    bool showGpu = CFG->PerfShowGpu;
-
     if (picked == cpu)
-        showCpu = cpu->isChecked();
+    {
+        CFG->PerfShowCpu = cpu->isChecked();
+        CFG->PerfHiddenDevices.removeAll("cpu");
+    }
     else if (picked == memory)
-        showMemory = memory->isChecked();
+    {
+        CFG->PerfShowMemory = memory->isChecked();
+        CFG->PerfHiddenDevices.removeAll("memory");
+    }
     else if (picked == swap)
-        showSwap = swap->isChecked();
-    else if (picked == disks)
-        showDisks = disks->isChecked();
-    else if (picked == network)
-        showNetwork = network->isChecked();
-    else if (picked == gpu)
-        showGpu = gpu->isChecked();
-
-    if (!(showCpu || showMemory || showSwap || showDisks || showNetwork || showGpu))
-        return;
-
-    CFG->PerfShowCpu = showCpu;
-    CFG->PerfShowMemory = showMemory;
-    CFG->PerfShowSwap = showSwap;
-    CFG->PerfShowDisks = showDisks;
-    CFG->PerfShowNetwork = showNetwork;
-    CFG->PerfShowGpu = showGpu;
+    {
+        CFG->PerfShowSwap = swap->isChecked();
+        CFG->PerfHiddenDevices.removeAll("swap");
+    }
+    else if (picked == showAllDisks)
+    {
+        CFG->PerfShowDisks = showAllDisks->isChecked();
+    }
+    else if (picked == showAllNet)
+    {
+        CFG->PerfShowNetwork = showAllNet->isChecked();
+    }
+    else if (picked == showAllGpu)
+    {
+        CFG->PerfShowGpu = showAllGpu->isChecked();
+    }
+    else if (picked == hideVirtualNet)
+    {
+        CFG->PerfHideVirtualNetworks = hideVirtualNet->isChecked();
+    }
+    else if (diskActionMap.contains(picked))
+    {
+        const QString devId = diskActionMap.value(picked);
+        if (picked->isChecked())
+            CFG->PerfHiddenDevices.removeAll(devId);
+        else if (!CFG->PerfHiddenDevices.contains(devId))
+            CFG->PerfHiddenDevices.append(devId);
+    }
+    else if (netActionMap.contains(picked))
+    {
+        const QString devId = netActionMap.value(picked);
+        if (picked->isChecked())
+            CFG->PerfHiddenDevices.removeAll(devId);
+        else if (!CFG->PerfHiddenDevices.contains(devId))
+            CFG->PerfHiddenDevices.append(devId);
+    }
+    else if (gpuActionMap.contains(picked))
+    {
+        const QString devId = gpuActionMap.value(picked);
+        if (picked->isChecked())
+            CFG->PerfHiddenDevices.removeAll(devId);
+        else if (!CFG->PerfHiddenDevices.contains(devId))
+            CFG->PerfHiddenDevices.append(devId);
+    }
 
     this->applyPanelVisibility();
     this->updateSamplingPolicy();
+    CFG->Save();
     if (this->m_active)
         this->onProviderUpdated();
 }
@@ -661,19 +926,59 @@ void PerformanceWidget::applySidePanelOrder()
 
 void PerformanceWidget::applyPanelVisibility()
 {
-    if (!(CFG->PerfShowCpu || CFG->PerfShowMemory || CFG->PerfShowSwap || CFG->PerfShowDisks || CFG->PerfShowNetwork || CFG->PerfShowGpu))
-        CFG->PerfShowCpu = true;
+    auto isItemVisible = [](Perf::SidePanelItem *item, bool groupEnabled) -> bool {
+        if (!item || !groupEnabled)
+            return false;
+        const QString devId = item->property("deviceId").toString();
+        if (!devId.isEmpty() && CFG->PerfHiddenDevices.contains(devId))
+            return false;
+        if (item->property("isVirtualNetwork").toBool() && CFG->PerfHideVirtualNetworks)
+            return false;
+        return true;
+    };
 
-    this->m_sidePanel->SetItemVisible(this->m_cpuItem, CFG->PerfShowCpu);
-    this->m_sidePanel->SetItemVisible(this->m_memoryItem, CFG->PerfShowMemory);
-    this->m_sidePanel->SetItemVisible(this->m_swapItem, CFG->PerfShowSwap);
+    bool cpuVis = isItemVisible(this->m_cpuItem, CFG->PerfShowCpu);
+    bool memVis = isItemVisible(this->m_memoryItem, CFG->PerfShowMemory);
+    bool swapVis = isItemVisible(this->m_swapItem, CFG->PerfShowSwap);
 
+    bool anyDiskVis = false;
     for (Perf::SidePanelItem *item : std::as_const(this->m_diskItems))
-        this->m_sidePanel->SetItemVisible(item, CFG->PerfShowDisks);
+    {
+        const bool vis = isItemVisible(item, CFG->PerfShowDisks);
+        this->m_sidePanel->SetItemVisible(item, vis);
+        if (vis)
+            anyDiskVis = true;
+    }
+
+    bool anyNetVis = false;
     for (Perf::SidePanelItem *item : std::as_const(this->m_networkItems))
-        this->m_sidePanel->SetItemVisible(item, CFG->PerfShowNetwork);
+    {
+        const bool vis = isItemVisible(item, CFG->PerfShowNetwork);
+        this->m_sidePanel->SetItemVisible(item, vis);
+        if (vis)
+            anyNetVis = true;
+    }
+
+    bool anyGpuVis = false;
     for (Perf::SidePanelItem *item : std::as_const(this->m_gpuItems))
-        this->m_sidePanel->SetItemVisible(item, CFG->PerfShowGpu);
+    {
+        const bool vis = isItemVisible(item, CFG->PerfShowGpu);
+        this->m_sidePanel->SetItemVisible(item, vis);
+        if (vis)
+            anyGpuVis = true;
+    }
+
+    // Safety fallback: ensure at least one item remains visible
+    if (!cpuVis && !memVis && !swapVis && !anyDiskVis && !anyNetVis && !anyGpuVis)
+    {
+        cpuVis = true;
+        CFG->PerfShowCpu = true;
+        CFG->PerfHiddenDevices.removeAll("cpu");
+    }
+
+    this->m_sidePanel->SetItemVisible(this->m_cpuItem, cpuVis);
+    this->m_sidePanel->SetItemVisible(this->m_memoryItem, memVis);
+    this->m_sidePanel->SetItemVisible(this->m_swapItem, swapVis);
 
     Perf::SidePanelItem *first = this->m_sidePanel->FirstVisibleItem();
     if (first && !this->m_sidePanel->IsItemVisible(this->m_sidePanel->GetCurrentItem()))
@@ -682,13 +987,47 @@ void PerformanceWidget::applyPanelVisibility()
 
 void PerformanceWidget::updateSamplingPolicy()
 {
-    Metrics::Get()->SetCpuSamplingEnabled(CFG->PerfShowCpu);
-    Metrics::Get()->SetMemorySamplingEnabled(CFG->PerfShowMemory);
-    Metrics::Get()->SetSwapSamplingEnabled(CFG->PerfShowSwap);
-    Metrics::Get()->SetDiskSamplingEnabled(CFG->PerfShowDisks);
-    Metrics::Get()->SetNetworkSamplingEnabled(CFG->PerfShowNetwork);
-    Metrics::Get()->SetGpuSamplingEnabled(CFG->PerfShowGpu);
-    Metrics::Get()->SetProcessStatsEnabled(CFG->PerfShowCpu && this->m_sidePanel->GetCurrentItem() == this->m_cpuItem);
+    const bool cpuVis = this->m_sidePanel->IsItemVisible(this->m_cpuItem);
+    const bool memVis = this->m_sidePanel->IsItemVisible(this->m_memoryItem);
+    const bool swapVis = this->m_sidePanel->IsItemVisible(this->m_swapItem);
+
+    bool anyDiskVis = false;
+    for (Perf::SidePanelItem *item : std::as_const(this->m_diskItems))
+    {
+        if (this->m_sidePanel->IsItemVisible(item))
+        {
+            anyDiskVis = true;
+            break;
+        }
+    }
+
+    bool anyNetVis = false;
+    for (Perf::SidePanelItem *item : std::as_const(this->m_networkItems))
+    {
+        if (this->m_sidePanel->IsItemVisible(item))
+        {
+            anyNetVis = true;
+            break;
+        }
+    }
+
+    bool anyGpuVis = false;
+    for (Perf::SidePanelItem *item : std::as_const(this->m_gpuItems))
+    {
+        if (this->m_sidePanel->IsItemVisible(item))
+        {
+            anyGpuVis = true;
+            break;
+        }
+    }
+
+    Metrics::Get()->SetCpuSamplingEnabled(cpuVis);
+    Metrics::Get()->SetMemorySamplingEnabled(memVis);
+    Metrics::Get()->SetSwapSamplingEnabled(swapVis);
+    Metrics::Get()->SetDiskSamplingEnabled(anyDiskVis);
+    Metrics::Get()->SetNetworkSamplingEnabled(anyNetVis);
+    Metrics::Get()->SetGpuSamplingEnabled(anyGpuVis);
+    Metrics::Get()->SetProcessStatsEnabled(cpuVis && this->m_sidePanel->GetCurrentItem() == this->m_cpuItem);
 }
 
 void PerformanceWidget::applySidePanelGridEnabled()
@@ -738,4 +1077,146 @@ void PerformanceWidget::applyGraphWindowSeconds()
         if (label && label->property("perfTimeAxisLabel").toBool())
             label->setText(labelText);
     }
+}
+
+void PerformanceWidget::installSidebarToggle(QWidget *detail)
+{
+    if (!detail)
+        return;
+
+    QBoxLayout *header = detail->findChild<QBoxLayout *>("headerLayout");
+    if (!header)
+        return;
+
+    auto *btn = new QToolButton(detail);
+    btn->setText(QString::fromUtf8("◫"));
+    btn->setCheckable(true);
+    btn->setChecked(this->m_sidePanel->isVisible());
+    btn->setToolTip(tr("Toggle devices sidebar"));
+    btn->setFixedSize(26, 26);
+    btn->setCursor(Qt::PointingHandCursor);
+    btn->setStyleSheet("QToolButton { font-size: 13pt; border: 1px solid transparent; border-radius: 4px; padding: 0px; }"
+                       "QToolButton:hover { background-color: rgba(128, 128, 128, 0.2); border: 1px solid rgba(128, 128, 128, 0.3); }"
+                       "QToolButton:checked { background-color: rgba(128, 128, 128, 0.25); }");
+    connect(btn, &QToolButton::clicked, this, [this]()
+    {
+        this->toggleSidePanel();
+    });
+    header->insertWidget(0, btn);
+    this->m_sidebarToggleButtons.append(btn);
+}
+
+void PerformanceWidget::updateSidebarToggleButtons()
+{
+    const bool vis = this->m_sidePanel->isVisible();
+    for (QToolButton *btn : this->m_sidebarToggleButtons)
+    {
+        if (btn)
+            btn->setChecked(vis);
+    }
+}
+
+void PerformanceWidget::setSidePanelVisible(bool visible)
+{
+    if (this->m_sidePanel->isVisible() == visible)
+        return;
+    this->m_sidePanel->setVisible(visible);
+    this->updateSidebarToggleButtons();
+}
+
+bool PerformanceWidget::isSidePanelVisible() const
+{
+    return this->m_sidePanel->isVisible();
+}
+
+void PerformanceWidget::toggleSidePanel()
+{
+    this->setSidePanelVisible(!this->m_sidePanel->isVisible());
+}
+
+void PerformanceWidget::setCompactMode(bool compact)
+{
+    if (this->m_compactMode == compact)
+        return;
+    this->m_compactMode = compact;
+
+    if (this->m_cpuDetail)
+        this->m_cpuDetail->SetCompactMode(compact);
+    if (this->m_memDetail)
+        this->m_memDetail->SetCompactMode(compact);
+    if (this->m_swapDetail)
+        this->m_swapDetail->SetCompactMode(compact);
+    for (auto *disk : this->m_diskDetails)
+    {
+        if (disk)
+            disk->SetCompactMode(compact);
+    }
+    for (auto *net : this->m_networkDetails)
+    {
+        if (net)
+            net->SetCompactMode(compact);
+    }
+    for (auto *gpu : this->m_gpuDetails)
+    {
+        if (gpu)
+            gpu->SetCompactMode(compact);
+    }
+}
+
+void PerformanceWidget::updateResponsiveLayout(int w, int h)
+{
+    if (w <= 0 || h <= 0)
+        return;
+
+    const int kSidePanelBreakpoint = 720;
+    if (this->m_lastWidth > 0)
+    {
+        if (this->m_lastWidth >= kSidePanelBreakpoint && w < kSidePanelBreakpoint)
+        {
+            this->setSidePanelVisible(false);
+            this->m_autoHiddenSidePanel = true;
+        }
+        else if (this->m_lastWidth < kSidePanelBreakpoint && w >= kSidePanelBreakpoint)
+        {
+            if (this->m_autoHiddenSidePanel || !this->m_sidePanel->isVisible())
+            {
+                this->setSidePanelVisible(true);
+                this->m_autoHiddenSidePanel = false;
+            }
+        }
+    }
+    else
+    {
+        if (w < kSidePanelBreakpoint)
+        {
+            this->setSidePanelVisible(false);
+            this->m_autoHiddenSidePanel = true;
+        }
+        else
+        {
+            this->setSidePanelVisible(true);
+            this->m_autoHiddenSidePanel = false;
+        }
+    }
+
+    const int kCompactBreakpointW = 520;
+    const int kCompactBreakpointH = 480;
+
+    const bool shouldBeCompact = (w < kCompactBreakpointW || h < kCompactBreakpointH);
+    this->setCompactMode(shouldBeCompact);
+
+    this->m_lastWidth = w;
+    this->m_lastHeight = h;
+}
+
+void PerformanceWidget::resizeEvent(QResizeEvent *event)
+{
+    QWidget::resizeEvent(event);
+    this->updateResponsiveLayout(this->width(), this->height());
+}
+
+void PerformanceWidget::showEvent(QShowEvent *event)
+{
+    QWidget::showEvent(event);
+    this->updateResponsiveLayout(this->width(), this->height());
 }

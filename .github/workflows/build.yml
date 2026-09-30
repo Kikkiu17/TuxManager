@@ -1,0 +1,176 @@
+name: Linux Build (AppImage, DEB, RPM)
+
+on:
+  push:
+    branches: [ master ]
+  release:
+    types: [published]
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  build-appimage:
+    name: Build Linux AppImage
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            pkg-config \
+            qmake6 \
+            qt6-base-dev \
+            qt6-base-dev-tools \
+            qt6-l10n-tools \
+            libgl1-mesa-dev \
+            libfuse2t64 \
+            file \
+            wget \
+            curl
+
+      - name: Install linuxdeploy and plugins
+        run: |
+          mkdir -p /tmp/linuxdeploy && cd /tmp/linuxdeploy
+          wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          wget -q https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+          wget -q https://github.com/linuxdeploy/linuxdeploy-plugin-appimage/releases/download/continuous/linuxdeploy-plugin-appimage-x86_64.AppImage
+          chmod +x *.AppImage
+
+          # Extract AppImages to /opt to completely bypass FUSE requirements in CI
+          ./linuxdeploy-x86_64.AppImage --appimage-extract
+          sudo mv squashfs-root /opt/linuxdeploy
+          sudo ln -sf /opt/linuxdeploy/AppRun /usr/local/bin/linuxdeploy
+
+          ./linuxdeploy-plugin-qt-x86_64.AppImage --appimage-extract
+          sudo mv squashfs-root /opt/linuxdeploy-plugin-qt
+          sudo ln -sf /opt/linuxdeploy-plugin-qt/AppRun /usr/local/bin/linuxdeploy-plugin-qt
+
+          ./linuxdeploy-plugin-appimage-x86_64.AppImage --appimage-extract
+          sudo mv squashfs-root /opt/linuxdeploy-plugin-appimage
+          sudo ln -sf /opt/linuxdeploy-plugin-appimage/AppRun /usr/local/bin/linuxdeploy-plugin-appimage
+
+          # Ensure lrelease is in expected path for Qt6 tools if needed
+          if [ ! -x /usr/lib/qt6/bin/lrelease ] && command -v lrelease-qt6 >/dev/null 2>&1; then
+            sudo ln -sf "$(command -v lrelease-qt6)" /usr/lib/qt6/bin/lrelease
+          fi
+
+      - name: Build AppImage
+        run: |
+          export APPIMAGE_EXTRACT_AND_RUN=1
+          cd packaging
+          ./package-appimage.sh
+
+      - name: Upload Linux AppImage
+        uses: actions/upload-artifact@v4
+        with:
+          name: TuxManager-Linux-AppImage
+          path: packaging/output/*.AppImage
+          if-no-files-found: error
+
+  build-deb:
+    name: Build Linux DEB
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            debhelper \
+            dpkg-dev \
+            pkg-config \
+            qmake6 \
+            qt6-base-dev \
+            qt6-base-dev-tools \
+            qt6-l10n-tools \
+            libgl1-mesa-dev
+
+      - name: Build DEB
+        run: |
+          cd packaging
+          ./package-deb.sh
+
+      - name: Upload Linux DEB
+        uses: actions/upload-artifact@v4
+        with:
+          name: TuxManager-Linux-DEB
+          path: packaging/output/*.deb
+          if-no-files-found: error
+
+  build-rpm:
+    name: Build Linux RPM
+    runs-on: ubuntu-latest
+    container:
+      image: fedora:latest
+
+    steps:
+      - name: Install build dependencies
+        run: |
+          dnf install -y \
+            rpm-build \
+            rsync \
+            git \
+            pkgconf-pkg-config \
+            qt6-qtbase-devel \
+            qt6-linguist \
+            gcc-c++ \
+            make
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build RPM
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          cd packaging
+          ./package-rpm.sh
+
+      - name: Upload Linux RPM
+        uses: actions/upload-artifact@v4
+        with:
+          name: TuxManager-Linux-RPM
+          path: packaging/output/*.rpm
+          if-no-files-found: error
+
+  create-release:
+    name: Upload Release Assets
+    needs: [build-appimage, build-deb, build-rpm]
+    if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && github.ref_type == 'tag')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download Linux AppImage
+        uses: actions/download-artifact@v4
+        with:
+          name: TuxManager-Linux-AppImage
+          path: release_assets/
+
+      - name: Download Linux DEB
+        uses: actions/download-artifact@v4
+        with:
+          name: TuxManager-Linux-DEB
+          path: release_assets/
+
+      - name: Download Linux RPM
+        uses: actions/download-artifact@v4
+        with:
+          name: TuxManager-Linux-RPM
+          path: release_assets/
+
+      - name: Upload Assets to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release_assets/*

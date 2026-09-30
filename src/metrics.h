@@ -59,6 +59,12 @@ class Metrics : public QObject
         void SetDiskSamplingEnabled(bool enabled) { this->m_diskSamplingEnabled = enabled; }
         void SetNetworkSamplingEnabled(bool enabled) { this->m_networkSamplingEnabled = enabled; }
         void SetGpuSamplingEnabled(bool enabled) { this->m_gpuSamplingEnabled = enabled; }
+        bool IsCpuSamplingEnabled() const { return this->m_cpuSamplingEnabled; }
+        bool IsMemorySamplingEnabled() const { return this->m_memorySamplingEnabled; }
+        bool IsSwapSamplingEnabled() const { return this->m_swapSamplingEnabled; }
+        bool IsDiskSamplingEnabled() const { return this->m_diskSamplingEnabled; }
+        bool IsNetworkSamplingEnabled() const { return this->m_networkSamplingEnabled; }
+        bool IsGpuSamplingEnabled() const { return this->m_gpuSamplingEnabled; }
 
     signals:
         void updated();

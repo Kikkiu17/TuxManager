@@ -77,7 +77,7 @@ GpuDetailWidget::GpuDetailWidget(QWidget *parent) : QWidget(parent), ui(new Ui::
 
         auto *graph = new GraphWidget(this);
         configureGraph(graph);
-        graph->setMinimumHeight(120);
+        graph->setMinimumHeight(35);
         UIHelper::EnableGraphContextMenu(graph);
 
         this->m_engineSelectors.append(selector);
@@ -339,4 +339,35 @@ void GpuDetailWidget::bindMemoryAndCopySources()
     this->ui->copyBwGraphWidget->SetDataSource(gpu->CopyTxHistory, 1024.0);
     this->ui->copyBwGraphWidget->SetOverlayDataSource(gpu->CopyRxHistory);
     this->ui->sharedMemGraphWidget->SetDataSource(gpu->SharedMemHistory, 100.0);
+}
+
+void GpuDetailWidget::SetCompactMode(bool compact)
+{
+    if (QGridLayout *statsGrid = this->findChild<QGridLayout *>("statsGrid"))
+    {
+        for (int i = 0; i < statsGrid->count(); ++i)
+        {
+            if (QWidget *w = statsGrid->itemAt(i)->widget())
+                w->setVisible(!compact);
+        }
+    }
+
+    this->ui->dedicatedMemGraphLabel->setVisible(!compact);
+    this->ui->dedicatedMemGraphMaxLabel->setVisible(!compact);
+    this->ui->dedicatedMemGraphWidget->setVisible(!compact);
+    this->ui->dedicatedTimeLeftLabel->setVisible(!compact);
+    this->ui->dedicatedTimeRightLabel->setVisible(!compact);
+
+    this->ui->sharedMemGraphLabel->setVisible(!compact);
+    this->ui->sharedMemGraphMaxLabel->setVisible(!compact);
+    this->ui->sharedMemGraphWidget->setVisible(!compact);
+    this->ui->sharedTimeLeftLabel->setVisible(!compact);
+    this->ui->sharedTimeRightLabel->setVisible(!compact);
+
+    this->ui->copyBwGraphLabel->setVisible(!compact);
+    this->ui->copyBwLegendLabel->setVisible(!compact);
+    this->ui->copyBwGraphMaxLabel->setVisible(!compact);
+    this->ui->copyBwGraphWidget->setVisible(!compact);
+    this->ui->copyTimeLeftLabel->setVisible(!compact);
+    this->ui->copyTimeRightLabel->setVisible(!compact);
 }

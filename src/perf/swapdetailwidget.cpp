@@ -230,3 +230,15 @@ void SwapDetailWidget::onSwapDevicesChanged()
 {
     this->ui->usageGraphArea->RebindDevices();
 }
+
+void SwapDetailWidget::SetCompactMode(bool compact)
+{
+    if (QGridLayout *statsGrid = this->findChild<QGridLayout *>("statsGrid"))
+    {
+        for (int i = 0; i < statsGrid->count(); ++i)
+        {
+            if (QWidget *w = statsGrid->itemAt(i)->widget())
+                w->setVisible(!compact);
+        }
+    }
+}

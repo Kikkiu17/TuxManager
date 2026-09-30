@@ -91,15 +91,6 @@ bool OS::operator==(const Process::Identity &lhs, const Process::Identity &rhs)
     return lhs.PID == rhs.PID && lhs.StartTimeTicks == rhs.StartTimeTicks;
 }
 
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
-size_t OS::qHash(const Process::Identity &key, size_t seed)
-#else
-uint OS::qHash(const Process::Identity &key, uint seed)
-#endif
-{
-    return ::qHash(key.StartTimeTicks, ::qHash(static_cast<quint32>(key.PID), seed));
-}
-
 // ── Private: load a single process ───────────────────────────────────────────
 
 bool Process::loadOneStatAndUid(pid_t pid, Process &out)
@@ -258,6 +249,19 @@ void Process::loadUserAndCmdline(Process &proc)
         proc.CmdLine = proc.Name; // fallback: use comm name
 }
 
+void Process::loadCGroup(Process &proc)
+{
+    if (proc.IsKernelThread)
+        return;
+
+    QFile cgroupFile(QString("/proc/%1/cgroup").arg(proc.PID));
+    if (cgroupFile.open(QIODevice::ReadOnly | QIODevice::Text))
+    {
+        proc.CGroup = QString::fromUtf8(cgroupFile.readAll()).trimmed();
+        cgroupFile.close();
+    }
+}
+
 // ── Public: load all processes ────────────────────────────────────────────────
 
 QList<Process> Process::LoadAll()
@@ -305,6 +309,7 @@ QList<Process> Process::LoadAll(const LoadOptions &options)
         }
 
         loadUserAndCmdline(proc);
+        loadCGroup(proc);
         list.append(proc);
     }
 

@@ -31,6 +31,7 @@
 #include <QPoint>
 #include <QSplitter>
 #include <QStackedWidget>
+#include <QToolButton>
 #include <QVector>
 #include <QWidget>
 
@@ -51,7 +52,20 @@ class PerformanceWidget : public QWidget
         static PerformanceWidget *Get() { return s_instance; };
         void onProviderUpdated();
         void applyGraphWindowSeconds();
-        
+        void setCompactMode(bool compact);
+        bool isCompactMode() const { return this->m_compactMode; }
+        void setSidePanelVisible(bool visible);
+        bool isSidePanelVisible() const;
+        void toggleSidePanel();
+        void updateResponsiveLayout(int width, int height);
+        QSize minimumSizeHint() const override { return QSize(300, 200); }
+        void applyPanelVisibility();
+        void updateSamplingPolicy();
+
+    protected:
+        void resizeEvent(QResizeEvent *event) override;
+        void showEvent(QShowEvent *event) override;
+
     private slots:
         void onSidePanelContextMenu(Perf::SidePanelItem *item, const QPoint &globalPos);
 
@@ -87,9 +101,15 @@ class PerformanceWidget : public QWidget
         void setupGpuPanels();
         void applySidePanelOrder();
         void tagTimeAxisLabels();
-        void applyPanelVisibility();
         void applySidePanelGridEnabled();
-        void updateSamplingPolicy();
+        void installSidebarToggle(QWidget *detailWidget);
+        void updateSidebarToggleButtons();
+
+        bool                             m_compactMode { false };
+        bool                             m_autoHiddenSidePanel { false };
+        int                              m_lastWidth { -1 };
+        int                              m_lastHeight { -1 };
+        QVector<QToolButton *>           m_sidebarToggleButtons;
 };
 
 #endif // PERFORMANCEWIDGET_H

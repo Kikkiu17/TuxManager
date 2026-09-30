@@ -65,8 +65,8 @@ class Configuration : public QObject
         // ── Processes tab ─────────────────────────────────────────────────────────
         bool ShowKernelTasks     { true };  ///< Show kernel threads in the process list
         bool ShowOtherUsersProcs { true };  ///< Show processes of other users
-        bool ShowProcessIcons    { true };  ///< Show application icons in the process name column
         bool ProcessTreeView     { false }; ///< Processes tab: false=table, true=tree
+        int  ProcessViewMode     { 0 };     ///< 0=Grouped (default), 1=Table (flat), 2=Tree (hierarchy)
         int  ProcessListSortColumn { 4 };   ///< ColCpu — column index to sort by
         int  ProcessListSortOrder  { 1 };   ///< Qt::DescendingOrder
         int  ProcessColumnSchemaVersion { 0 }; ///< Version for persisted process header states.
@@ -98,6 +98,8 @@ class Configuration : public QObject
         bool PerfNetworkUseBits { true };
         int PerfGraphWindowSec { 60 };
         QStringList PerfSidePanelGroupOrder;
+        QStringList PerfHiddenDevices;         ///< List of individually hidden device IDs (e.g. "net:tailscale0", "disk:sdb")
+        bool PerfHideVirtualNetworks { false }; ///< Convenience toggle to hide all virtual network interfaces
         QByteArray PerformanceSplitterState;   ///< Saved via QSplitter::saveState()
 
     private:

@@ -319,6 +319,8 @@ bool Storage::Sample()
         }
 
         const DiskCounters c = it.value();
+        d->TotalReadBytes  = c.readSectors * 512ULL;
+        d->TotalWriteBytes = c.writeSectors * 512ULL;
         if (dtMs <= 0)
         {
             d->PrevReadSecs  = c.readSectors;

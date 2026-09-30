@@ -100,7 +100,7 @@
    <item>
     <widget class="Perf::GraphWidget" name="dedicatedMemGraphWidget">
      <property name="minimumHeight">
-      <number>70</number>
+      <number>30</number>
      </property>
     </widget>
    </item>
@@ -175,7 +175,7 @@
    <item>
     <widget class="Perf::GraphWidget" name="sharedMemGraphWidget">
      <property name="minimumHeight">
-      <number>70</number>
+      <number>30</number>
      </property>
     </widget>
    </item>
@@ -257,7 +257,7 @@
    <item>
     <widget class="Perf::GraphWidget" name="copyBwGraphWidget">
      <property name="minimumHeight">
-      <number>70</number>
+      <number>30</number>
      </property>
     </widget>
    </item>

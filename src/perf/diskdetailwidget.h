@@ -39,13 +39,17 @@ namespace Perf
 
             void SetDisk(int index);
             void ApplyColorScheme();
+            void SetCompactMode(bool compact);
 
         private slots:
             void onUpdated();
+            void onSmartButtonClicked();
 
         private:
             Ui::DiskDetailWidget *ui;
             int                   m_diskIndex { -1 };
+            QString               m_diskName;
+            QString               m_diskModel;
     };
 } // namespace Perf
 

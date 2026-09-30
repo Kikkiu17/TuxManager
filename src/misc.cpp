@@ -100,7 +100,16 @@ QString Misc::FormatBytes(quint64 bytes, int precision)
         ++unitIndex;
     }
 
-    const int decimals = (unitIndex == 0) ? 0 : qMax(0, precision);
+    int decimals = 0;
+    if (unitIndex >= 3)
+    {
+        decimals = qMax(2, precision);
+    }
+    else if (unitIndex > 0)
+    {
+        decimals = qMax(0, precision);
+    }
+
     return QString::number(value, 'f', decimals) + QObject::tr(kUnits[unitIndex]);
 }
 

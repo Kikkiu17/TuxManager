@@ -90,7 +90,7 @@
    <item>
     <widget class="Perf::SwapGraphArea" name="usageGraphArea">
      <property name="minimumHeight">
-      <number>220</number>
+      <number>35</number>
      </property>
      <property name="sizePolicy">
       <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
@@ -168,7 +168,7 @@
    <item>
     <widget class="Perf::GraphWidget" name="activityGraphWidget">
      <property name="minimumHeight">
-      <number>110</number>
+      <number>35</number>
      </property>
     </widget>
    </item>

@@ -58,7 +58,7 @@ void ProcessRefreshWorker::fetch(int consumer,
 
     if (periodJiffies > 0)
     {
-        const double periodPerCpu = static_cast<double>(periodJiffies) / this->m_numCpus;
+        const double totalPeriod = static_cast<double>(periodJiffies);
 
         for (Process &proc : fresh)
         {
@@ -66,18 +66,22 @@ void ProcessRefreshWorker::fetch(int consumer,
             if (it == this->m_prevTicks.cend() || proc.CPUTicks < it.value())
                 continue;
 
-            const double pct = static_cast<double>(proc.CPUTicks - it.value()) / periodPerCpu * 100.0;
-            proc.CPUPercent = qMin(pct, 100.0 * this->m_numCpus);
+            const double pct = static_cast<double>(proc.CPUTicks - it.value()) / totalPeriod * 100.0;
+            // Cap at 100% of the entire CPU
+            proc.CPUPercent = qMin(pct, 100.0);
         }
     }
 
-    const qint64 ioElapsedMs = collectIOMetrics
+    const bool isProcessConsumer = (consumer == static_cast<int>(ProcessRefreshService::Consumer::Processes));
+    const bool handleIo = collectIOMetrics && isProcessConsumer;
+
+    const qint64 ioElapsedMs = handleIo
                                ? (this->m_prevIoSampleTimer.isValid() ? this->m_prevIoSampleTimer.restart() : -1)
                                : -1;
-    if (collectIOMetrics && !this->m_prevIoSampleTimer.isValid())
+    if (handleIo && !this->m_prevIoSampleTimer.isValid())
         this->m_prevIoSampleTimer.start();
 
-    if (collectIOMetrics && ioElapsedMs > 0)
+    if (handleIo && ioElapsedMs > 0)
     {
         const double elapsedSec = static_cast<double>(ioElapsedMs) / 1000.0;
         for (Process &proc : fresh)
@@ -104,7 +108,7 @@ void ProcessRefreshWorker::fetch(int consumer,
         this->m_prevTicks.insert(proc.PID, proc.CPUTicks);
     this->m_prevCpuTotalTicks = totalJiffies;
 
-    if (collectIOMetrics)
+    if (handleIo)
     {
         this->m_prevIoReadBytes.clear();
         this->m_prevIoWriteBytes.clear();
@@ -117,7 +121,7 @@ void ProcessRefreshWorker::fetch(int consumer,
         }
         if (!this->m_prevIoSampleTimer.isValid())
             this->m_prevIoSampleTimer.start();
-    } else
+    } else if (isProcessConsumer)
     {
         this->flushIOMetrics();
     }

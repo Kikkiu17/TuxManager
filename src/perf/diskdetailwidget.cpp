@@ -17,11 +17,13 @@
  */
 
 #include "diskdetailwidget.h"
+#include "smartdatadialog.h"
 #include "globals.h"
 #include "metrics.h"
 #include "ui_diskdetailwidget.h"
 #include "../colorscheme.h"
 #include "../misc.h"
+#include "../system/smartreader.h"
 #include "../ui/uihelper.h"
 #include "../ui/widgetstyle.h"
 
@@ -33,6 +35,8 @@ using namespace Perf;
 DiskDetailWidget::DiskDetailWidget(QWidget *parent) : QWidget(parent), ui(new Ui::DiskDetailWidget)
 {
     this->ui->setupUi(this);
+    this->ui->smartButton->setIcon(QIcon::fromTheme("dialog-information"));
+    connect(this->ui->smartButton, &QPushButton::clicked, this, &DiskDetailWidget::onSmartButtonClicked);
     const ColorScheme *scheme = ColorScheme::GetCurrent();
 
     WidgetStyle::ApplyTextStyle(this->ui->titleLabel, scheme->DiskTitleColor, 18, true);
@@ -85,6 +89,8 @@ DiskDetailWidget::DiskDetailWidget(QWidget *parent) : QWidget(parent), ui(new Ui
     UIHelper::EnableCopyLabelContextMenu(this->ui->formattedValueLabel);
     UIHelper::EnableCopyLabelContextMenu(this->ui->writeValueLabel);
     UIHelper::EnableCopyLabelContextMenu(this->ui->systemDiskValueLabel);
+    UIHelper::EnableCopyLabelContextMenu(this->ui->totalReadValueLabel);
+    UIHelper::EnableCopyLabelContextMenu(this->ui->totalWriteValueLabel);
     UIHelper::EnableCopyLabelContextMenu(this->ui->deviceValueLabel);
     UIHelper::EnableCopyLabelContextMenu(this->ui->swapDeviceValueLabel);
     UIHelper::EnableCopyLabelContextMenu(this->ui->typeValueLabel);
@@ -136,6 +142,15 @@ void DiskDetailWidget::SetDisk(int index)
     if (this->m_diskIndex >= 0 && this->m_diskIndex < Metrics::GetStorage()->DiskCount())
     {
         const Storage::DiskInfo &disk = Metrics::GetStorage()->FromIndex(this->m_diskIndex);
+        this->m_diskName = disk.Name;
+        this->m_diskModel = disk.Model;
+
+        const bool smartSupported = System::SmartReader::IsSupported(disk.Name);
+        this->ui->smartButton->setEnabled(smartSupported);
+        if (smartSupported)
+            this->ui->smartButton->setToolTip(tr("View S.M.A.R.T. health and diagnostic attributes for %1").arg(disk.Name));
+        else
+            this->ui->smartButton->setToolTip(tr("S.M.A.R.T. is not supported on this device"));
 
         this->ui->titleLabel->setText(tr("Disk (%1)").arg(disk.Name));
         this->ui->modelLabel->setText(disk.Model);
@@ -159,6 +174,8 @@ void DiskDetailWidget::onUpdated()
     this->ui->activeValueLabel->setText(QString::number(disk.ActivePct, 'f', 0) + "%");
     this->ui->readValueLabel->setText(Misc::FormatBytesPerSecond(disk.ReadBps));
     this->ui->writeValueLabel->setText(Misc::FormatBytesPerSecond(disk.WriteBps));
+    this->ui->totalReadValueLabel->setText(Misc::FormatBytes(disk.TotalReadBytes, 2));
+    this->ui->totalWriteValueLabel->setText(Misc::FormatBytes(disk.TotalWriteBytes, 2));
     this->ui->capacityValueLabel->setText(Misc::FormatBytes(static_cast<quint64>(qMax<qint64>(0, disk.CapacityBytes)), 1));
     this->ui->formattedValueLabel->setText(disk.FormattedBytes > 0
                                            ? Misc::FormatBytes(static_cast<quint64>(qMax<qint64>(0, disk.FormattedBytes)), 1)
@@ -171,3 +188,25 @@ void DiskDetailWidget::onUpdated()
     this->ui->transferGraphWidget->Tick();
     this->ui->transferGraphMaxLabel->setText(Misc::FormatBytesPerSecond(disk.MaxTransferBps));
 }
+
+void DiskDetailWidget::SetCompactMode(bool compact)
+{
+    if (QGridLayout *statsGrid = this->findChild<QGridLayout *>("statsGrid"))
+    {
+        for (int i = 0; i < statsGrid->count(); ++i)
+        {
+            if (QWidget *w = statsGrid->itemAt(i)->widget())
+                w->setVisible(!compact);
+        }
+    }
+}
+
+void DiskDetailWidget::onSmartButtonClicked()
+{
+    if (this->m_diskName.isEmpty())
+        return;
+
+    SmartDataDialog dlg(this->m_diskName, this->m_diskModel, this);
+    dlg.exec();
+}
+
