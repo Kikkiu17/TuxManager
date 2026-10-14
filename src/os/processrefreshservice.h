@@ -52,12 +52,13 @@ namespace OS
             void fetched(int consumer, quint64 token, const QList<Process> &processes);
 
         private:
-            QHash<pid_t, quint64> m_prevTicks;
-            QHash<pid_t, quint64> m_prevIoReadBytes;
-            QHash<pid_t, quint64> m_prevIoWriteBytes;
-            quint64               m_prevCpuTotalTicks { 0 };
-            QElapsedTimer         m_prevIoSampleTimer;
-            int                   m_numCpus { 1 };
+            QHash<pid_t, quint64>   m_prevTicks;
+            QHash<pid_t, quint64>   m_prevIoReadBytes;
+            QHash<pid_t, quint64>   m_prevIoWriteBytes;
+            QHash<QString, quint64> m_prevDiskIoMs;
+            quint64                 m_prevCpuTotalTicks { 0 };
+            QElapsedTimer           m_prevIoSampleTimer;
+            int                     m_numCpus { 1 };
 
             void flushIOMetrics();
     };

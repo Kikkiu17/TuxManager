@@ -45,6 +45,7 @@ namespace OS
                 ColMemShared,
                 ColMemText,
                 ColMemData,
+                ColDisk,
                 ColIoReads,
                 ColIoWrites,
                 ColIoReadsPerSec,
@@ -85,6 +86,7 @@ namespace OS
             QHash<pid_t, quint64>   m_prevTicks;               ///< cpuTicks from previous sample
             QHash<pid_t, quint64>   m_prevIoReadBytes;
             QHash<pid_t, quint64>   m_prevIoWriteBytes;
+            QHash<QString, quint64> m_prevDiskIoMs;
             quint64                 m_prevCpuTotalTicks { 0 }; ///< Total CPU jiffies from previous /proc/stat sample
             QElapsedTimer           m_prevIoSampleTimer;
             int                     m_numCpus { 1 };           ///< Online CPU count for normalisation

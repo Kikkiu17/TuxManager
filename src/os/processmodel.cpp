@@ -59,6 +59,7 @@ namespace
                && lhs.IOWriteBytes == rhs.IOWriteBytes
                && lhs.IOReadBps == rhs.IOReadBps
                && lhs.IOWriteBps == rhs.IOWriteBps
+               && lhs.DiskPercent == rhs.DiskPercent
                && lhs.IOTotalsAvailable == rhs.IOTotalsAvailable
                && lhs.IORatesAvailable == rhs.IORatesAvailable
                && lhs.IOPermissionDenied == rhs.IOPermissionDenied;
@@ -116,6 +117,10 @@ QVariant ProcessModel::data(const QModelIndex &index, int role) const
             case ColMemShared:return Misc::FormatKiB(proc.SharedKb, 0);
             case ColMemText:  return Misc::FormatKiB(proc.TextKb, 0);
             case ColMemData:  return Misc::FormatKiB(proc.DataKb, 0);
+            case ColDisk:
+                if (proc.IOPermissionDenied || !proc.IOTotalsAvailable)
+                    return QString("?");
+                return proc.IORatesAvailable ? (QString::number(proc.DiskPercent, 'f', 1) + " %") : tr("measuring...");
             case ColIoReads:  return proc.IOTotalsAvailable ? Misc::FormatBytes(proc.IOReadBytes, 0) : QString("?");
             case ColIoWrites: return proc.IOTotalsAvailable ? Misc::FormatBytes(proc.IOWriteBytes, 0) : QString("?");
             case ColIoReadsPerSec:
@@ -146,6 +151,10 @@ QVariant ProcessModel::data(const QModelIndex &index, int role) const
             case ColMemShared:return static_cast<qulonglong>(proc.SharedKb);
             case ColMemText:  return static_cast<qulonglong>(proc.TextKb);
             case ColMemData:  return static_cast<qulonglong>(proc.DataKb);
+            case ColDisk:
+                return proc.IORatesAvailable
+                       ? QVariant::fromValue(proc.DiskPercent)
+                       : QVariant::fromValue(-1.0);
             case ColIoReads:
                 return proc.IOTotalsAvailable
                        ? QVariant::fromValue(static_cast<qlonglong>(proc.IOReadBytes))
@@ -180,6 +189,7 @@ QVariant ProcessModel::data(const QModelIndex &index, int role) const
             case ColMemShared:
             case ColMemText:
             case ColMemData:
+            case ColDisk:
             case ColIoReads:
             case ColIoWrites:
             case ColIoReadsPerSec:
@@ -340,6 +350,8 @@ QList<Process> ProcessModel::RefreshSnapshot()
         }
     }
 
+    const QHash<QString, quint64> currentDiskIoMs = this->m_ioMetricsEnabled ? Proc::ReadDiskIoMs() : QHash<QString, quint64>();
+
     const qint64 ioElapsedMs = this->m_ioMetricsEnabled
                                ? (this->m_prevIoSampleTimer.isValid() ? this->m_prevIoSampleTimer.restart() : -1)
                                : -1;
@@ -365,6 +377,49 @@ QList<Process> ProcessModel::RefreshSnapshot()
             proc.IOWriteBps = static_cast<double>(proc.IOWriteBytes - prevWriteBytes) / elapsedSec;
             proc.IORatesAvailable = true;
         }
+
+        double totalDiskActivePct = 0.0;
+        if (!this->m_prevDiskIoMs.isEmpty())
+        {
+            for (auto it = currentDiskIoMs.cbegin(); it != currentDiskIoMs.cend(); ++it)
+            {
+                const auto prevIt = this->m_prevDiskIoMs.constFind(it.key());
+                if (prevIt == this->m_prevDiskIoMs.cend() || it.value() < prevIt.value())
+                    continue;
+                const quint64 deltaMs = it.value() - prevIt.value();
+                const double diskPct = qBound(0.0, static_cast<double>(deltaMs) * 100.0 / static_cast<double>(ioElapsedMs), 100.0);
+                totalDiskActivePct += diskPct;
+            }
+            totalDiskActivePct = qMin(totalDiskActivePct, 100.0);
+        }
+
+        double totalProcessIoBps = 0.0;
+        for (const Process &proc : std::as_const(fresh))
+        {
+            if (proc.IORatesAvailable)
+                totalProcessIoBps += (proc.IOReadBps + proc.IOWriteBps);
+        }
+
+        for (Process &proc : fresh)
+        {
+            if (!proc.IORatesAvailable || totalProcessIoBps <= 0.0)
+            {
+                proc.DiskPercent = 0.0;
+                continue;
+            }
+
+            const double procIoBps = proc.IOReadBps + proc.IOWriteBps;
+            if (!currentDiskIoMs.isEmpty())
+            {
+                proc.DiskPercent = (totalDiskActivePct > 0.0)
+                                   ? qBound(0.0, (procIoBps / totalProcessIoBps) * totalDiskActivePct, 100.0)
+                                   : 0.0;
+            }
+            else
+            {
+                proc.DiskPercent = qBound(0.0, (procIoBps / totalProcessIoBps) * 100.0, 100.0);
+            }
+        }
     }
 
     // Store snapshots for next sample
@@ -384,6 +439,7 @@ QList<Process> ProcessModel::RefreshSnapshot()
             this->m_prevIoReadBytes.insert(proc.PID, proc.IOReadBytes);
             this->m_prevIoWriteBytes.insert(proc.PID, proc.IOWriteBytes);
         }
+        this->m_prevDiskIoMs = currentDiskIoMs;
         if (!this->m_prevIoSampleTimer.isValid())
             this->m_prevIoSampleTimer.start();
     }
@@ -404,6 +460,7 @@ void ProcessModel::FlushIOMetrics()
 {
     this->m_prevIoReadBytes.clear();
     this->m_prevIoWriteBytes.clear();
+    this->m_prevDiskIoMs.clear();
     this->m_prevIoSampleTimer.invalidate();
 }
 
@@ -423,6 +480,7 @@ QString ProcessModel::columnHeader(Column col)
         case ColMemShared:return tr("MEM SHR");
         case ColMemText:  return tr("MEM TEXT");
         case ColMemData:  return tr("MEM DATA");
+        case ColDisk:     return tr("Disk %");
         case ColIoReads:  return tr("IO Reads");
         case ColIoWrites: return tr("IO Writes");
         case ColIoReadsPerSec: return tr("IO Read/s");

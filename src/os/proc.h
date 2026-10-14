@@ -19,6 +19,8 @@
 #ifndef OS_PROC_H
 #define OS_PROC_H
 
+#include <QHash>
+#include <QString>
 #include <QtGlobal>
 
 namespace OS
@@ -29,6 +31,10 @@ namespace OS
             /// Read total elapsed CPU jiffies from /proc/stat (all CPUs, all states).
             /// Returns 0 on error.
             static quint64 ReadTotalCpuJiffies();
+
+            /// Read disk I/O active milliseconds per base block device from /proc/diskstats.
+            /// Returns map of device name (e.g. "nvme0n1", "sda") -> cumulative io_ms.
+            static QHash<QString, quint64> ReadDiskIoMs();
     };
 } // namespace OS
 

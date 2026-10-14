@@ -69,6 +69,7 @@ namespace OS
             quint64 IOWriteBytes  { 0 };      ///< Cumulative bytes written to storage since start.
             double  IOReadBps     { 0.0 };    ///< Calculated externally after two samples.
             double  IOWriteBps    { 0.0 };    ///< Calculated externally after two samples.
+            double  DiskPercent   { 0.0 };    ///< Calculated externally after two samples.
             bool    IOTotalsAvailable { false }; ///< True when /proc/pid/io totals were read.
             bool    IORatesAvailable { false };  ///< True when a previous I/O sample exists.
             bool    IOPermissionDenied { false }; ///< True when I/O metrics were skipped due to permissions.

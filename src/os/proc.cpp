@@ -40,3 +40,39 @@ quint64 Proc::ReadTotalCpuJiffies()
         total += parts.at(i).toULongLong();
     return total;
 }
+
+QHash<QString, quint64> Proc::ReadDiskIoMs()
+{
+    QFile f("/proc/diskstats");
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text))
+        return {};
+
+    QHash<QString, quint64> result;
+    for (;;)
+    {
+        const QByteArray line = f.readLine();
+        if (line.isNull())
+            break;
+
+        const QList<QByteArray> parts = line.simplified().split(' ');
+        if (parts.size() < 14)
+            continue;
+
+        const QString devName = QString::fromUtf8(parts.at(2));
+        if (devName.startsWith("loop") || devName.startsWith("ram")
+            || devName.startsWith("zram") || devName.startsWith("sr")
+            || devName.startsWith("dm-"))
+        {
+            continue;
+        }
+
+        // Only track base block devices exposed in /sys/block (e.g. sda, nvme0n1)
+        if (!QFile::exists(QStringLiteral("/sys/block/") + devName))
+            continue;
+
+        const quint64 ioMs = parts.at(12).toULongLong();
+        result.insert(devName, ioMs);
+    }
+    return result;
+}
+

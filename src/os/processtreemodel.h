@@ -43,6 +43,7 @@ namespace OS
                 ColMemShared,
                 ColMemText,
                 ColMemData,
+                ColDisk,
                 ColIoReads,
                 ColIoWrites,
                 ColIoReadsPerSec,

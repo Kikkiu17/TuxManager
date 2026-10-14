@@ -74,6 +74,7 @@ void ProcessRefreshWorker::fetch(int consumer,
 
     const bool isProcessConsumer = (consumer == static_cast<int>(ProcessRefreshService::Consumer::Processes));
     const bool handleIo = collectIOMetrics && isProcessConsumer;
+    const QHash<QString, quint64> currentDiskIoMs = handleIo ? Proc::ReadDiskIoMs() : QHash<QString, quint64>();
 
     const qint64 ioElapsedMs = handleIo
                                ? (this->m_prevIoSampleTimer.isValid() ? this->m_prevIoSampleTimer.restart() : -1)
@@ -100,6 +101,50 @@ void ProcessRefreshWorker::fetch(int consumer,
             proc.IOWriteBps = static_cast<double>(proc.IOWriteBytes - writeIt.value()) / elapsedSec;
             proc.IORatesAvailable = true;
         }
+
+        double totalDiskActivePct = 0.0;
+        if (!this->m_prevDiskIoMs.isEmpty())
+        {
+            for (auto it = currentDiskIoMs.cbegin(); it != currentDiskIoMs.cend(); ++it)
+            {
+                const auto prevIt = this->m_prevDiskIoMs.constFind(it.key());
+                if (prevIt == this->m_prevDiskIoMs.cend() || it.value() < prevIt.value())
+                    continue;
+                const quint64 deltaMs = it.value() - prevIt.value();
+                const double diskPct = qBound(0.0, static_cast<double>(deltaMs) * 100.0 / static_cast<double>(ioElapsedMs), 100.0);
+                totalDiskActivePct += diskPct;
+            }
+            totalDiskActivePct = qMin(totalDiskActivePct, 100.0);
+        }
+
+        double totalProcessIoBps = 0.0;
+        for (const Process &proc : std::as_const(fresh))
+        {
+            if (proc.IORatesAvailable)
+                totalProcessIoBps += (proc.IOReadBps + proc.IOWriteBps);
+        }
+
+        for (Process &proc : fresh)
+        {
+            if (!proc.IORatesAvailable || totalProcessIoBps <= 0.0)
+            {
+                proc.DiskPercent = 0.0;
+                continue;
+            }
+
+            const double procIoBps = proc.IOReadBps + proc.IOWriteBps;
+            if (!currentDiskIoMs.isEmpty())
+            {
+                proc.DiskPercent = (totalDiskActivePct > 0.0)
+                                   ? qBound(0.0, (procIoBps / totalProcessIoBps) * totalDiskActivePct, 100.0)
+                                   : 0.0;
+            }
+            else
+            {
+                // Fallback for environments without /proc/diskstats access: relative process share
+                proc.DiskPercent = qBound(0.0, (procIoBps / totalProcessIoBps) * 100.0, 100.0);
+            }
+        }
     }
 
     this->m_prevTicks.clear();
@@ -119,6 +164,7 @@ void ProcessRefreshWorker::fetch(int consumer,
             this->m_prevIoReadBytes.insert(proc.PID, proc.IOReadBytes);
             this->m_prevIoWriteBytes.insert(proc.PID, proc.IOWriteBytes);
         }
+        this->m_prevDiskIoMs = currentDiskIoMs;
         if (!this->m_prevIoSampleTimer.isValid())
             this->m_prevIoSampleTimer.start();
     } else if (isProcessConsumer)
@@ -133,6 +179,7 @@ void ProcessRefreshWorker::flushIOMetrics()
 {
     this->m_prevIoReadBytes.clear();
     this->m_prevIoWriteBytes.clear();
+    this->m_prevDiskIoMs.clear();
     this->m_prevIoSampleTimer.invalidate();
 }
 

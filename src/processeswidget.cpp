@@ -161,7 +161,7 @@ bool ProcessesWidget::selectProcessInTree(pid_t pid)
 
 void ProcessesWidget::setupTable()
 {
-    static constexpr int PROCESS_COLUMN_SCHEMA_VERSION = 1;
+    static constexpr int PROCESS_COLUMN_SCHEMA_VERSION = 2;
     const bool resetProcessHeaderState = CFG->ProcessColumnSchemaVersion < PROCESS_COLUMN_SCHEMA_VERSION;
     if (resetProcessHeaderState && CFG->ProcessListSortColumn > OS::ProcessModel::ColMemVirt)
         CFG->ProcessListSortColumn += 3;
@@ -233,6 +233,7 @@ void ProcessesWidget::setupTable()
     tv->setColumnWidth(OS::ProcessModel::ColMemShared, 80);
     tv->setColumnWidth(OS::ProcessModel::ColMemText,  80);
     tv->setColumnWidth(OS::ProcessModel::ColMemData,  80);
+    tv->setColumnWidth(OS::ProcessModel::ColDisk,     65);
     tv->setColumnWidth(OS::ProcessModel::ColIoReads,  90);
     tv->setColumnWidth(OS::ProcessModel::ColIoWrites, 90);
     tv->setColumnWidth(OS::ProcessModel::ColIoReadsPerSec, 100);
@@ -293,6 +294,7 @@ void ProcessesWidget::setupTable()
     this->m_treeView->setColumnWidth(OS::ProcessTreeModel::ColMemShared, 80);
     this->m_treeView->setColumnWidth(OS::ProcessTreeModel::ColMemText, 80);
     this->m_treeView->setColumnWidth(OS::ProcessTreeModel::ColMemData, 80);
+    this->m_treeView->setColumnWidth(OS::ProcessTreeModel::ColDisk, 65);
     this->m_treeView->setColumnWidth(OS::ProcessTreeModel::ColIoReads, 90);
     this->m_treeView->setColumnWidth(OS::ProcessTreeModel::ColIoWrites, 90);
     this->m_treeView->setColumnWidth(OS::ProcessTreeModel::ColIoReadsPerSec, 100);
@@ -642,7 +644,8 @@ bool ProcessesWidget::anyIOMetricsColumnVisible() const
         return false;
     };
 
-    return isVisible(OS::ProcessModel::ColIoReads)
+    return isVisible(OS::ProcessModel::ColDisk)
+           || isVisible(OS::ProcessModel::ColIoReads)
            || isVisible(OS::ProcessModel::ColIoWrites)
            || isVisible(OS::ProcessModel::ColIoReadsPerSec)
            || isVisible(OS::ProcessModel::ColIoWritesPerSec);
