@@ -69,7 +69,8 @@ void GPU::detectGpuBackends()
     this->m_intelSysmanBackend->Detect();
     this->m_drmBackend->Detect(this->m_nvmlBackend->IsAvailable(),
                                this->m_amdSmiBackend->IsAvailable(),
-                               this->m_intelSysmanBackend->IsAvailable());
+                               this->m_intelSysmanBackend->ClaimedBdfs(),
+                               false);
 }
 
 bool GPU::Sample()

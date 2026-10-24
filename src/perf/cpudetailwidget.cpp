@@ -48,12 +48,17 @@ CpuDetailWidget::CpuDetailWidget(QWidget *parent) : QWidget(parent), ui(new Ui::
     {
         for (int row = 0; row < statsGrid->rowCount(); ++row)
         {
-            for (int column = 0; column < statsGrid->columnCount(); column += 2)
+            for (int column = 0; column < statsGrid->columnCount(); ++column)
             {
                 if (QLayoutItem *item = statsGrid->itemAtPosition(row, column))
                 {
                     if (QLabel *label = qobject_cast<QLabel *>(item->widget()))
-                        WidgetStyle::ApplyTextStyle(label, scheme->StatLabelColor);
+                    {
+                        if (column % 2 == 0)
+                            WidgetStyle::ApplyTextStyle(label, scheme->StatLabelColor, 10);
+                        else
+                            WidgetStyle::ApplyTextStyle(label, scheme->DarkMode ? QColor(0xee, 0xee, 0xee) : QColor(0x22, 0x22, 0x22), 11);
+                    }
                 }
             }
         }
@@ -112,12 +117,17 @@ void CpuDetailWidget::ApplyColorScheme()
     {
         for (int row = 0; row < statsGrid->rowCount(); ++row)
         {
-            for (int column = 0; column < statsGrid->columnCount(); column += 2)
+            for (int column = 0; column < statsGrid->columnCount(); ++column)
             {
                 if (QLayoutItem *item = statsGrid->itemAtPosition(row, column))
                 {
                     if (QLabel *label = qobject_cast<QLabel *>(item->widget()))
-                        WidgetStyle::ApplyTextStyle(label, scheme->StatLabelColor);
+                    {
+                        if (column % 2 == 0)
+                            WidgetStyle::ApplyTextStyle(label, scheme->StatLabelColor, 10);
+                        else
+                            WidgetStyle::ApplyTextStyle(label, scheme->DarkMode ? QColor(0xee, 0xee, 0xee) : QColor(0x22, 0x22, 0x22), 11);
+                    }
                 }
             }
         }

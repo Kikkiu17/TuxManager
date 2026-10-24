@@ -176,6 +176,12 @@ PerformanceWidget::PerformanceWidget(QWidget *parent) : QWidget(parent), ui(new 
     this->applyGraphWindowSeconds();
     this->applyPanelVisibility();
     this->updateSamplingPolicy();
+
+    if (!this->m_batteryItems.isEmpty())
+        this->m_sidePanel->SetCurrentItem(this->m_batteryItems.first());
+    else if (this->m_cpuItem)
+        this->m_sidePanel->SetCurrentItem(this->m_cpuItem);
+
     if (this->m_sidePanel->GetCurrentItem())
     {
         QWidget *detail = this->m_detailByItem.value(this->m_sidePanel->GetCurrentItem(), nullptr);
@@ -271,6 +277,8 @@ void PerformanceWidget::setupSidePanel()
     this->setupDiskPanels();
     this->setupNetworkPanels();
     this->setupGpuPanels();
+    this->setupNpuPanels();
+    this->setupBatteryPanels();
 
     this->installSidebarToggle(this->m_cpuDetail);
     this->installSidebarToggle(this->m_memDetail);
@@ -281,6 +289,10 @@ void PerformanceWidget::setupSidePanel()
         this->installSidebarToggle(net);
     for (auto *gpu : this->m_gpuDetails)
         this->installSidebarToggle(gpu);
+    for (auto *npu : this->m_npuDetails)
+        this->installSidebarToggle(npu);
+    for (auto *bat : this->m_batteryDetails)
+        this->installSidebarToggle(bat);
 }
 
 void PerformanceWidget::setupDiskPanels()
@@ -331,6 +343,60 @@ void PerformanceWidget::setupGpuPanels()
         detail->SetGpu(i);
         this->m_stack->addWidget(detail);
         this->m_gpuDetails.append(detail);
+        this->m_detailByItem.insert(item, detail);
+    }
+}
+
+void PerformanceWidget::setupNpuPanels()
+{
+    const ColorScheme *scheme = ColorScheme::GetCurrent();
+    const int count = Metrics::GetNPU()->NpuCount();
+    for (int i = 0; i < count; ++i)
+    {
+        const NPU::NPUInfo &npu = Metrics::GetNPU()->FromIndex(i);
+        this->m_npuNames.append(npu.Name);
+
+        const QString label = (count > 1) ? tr("NPU %1").arg(i) : tr("NPU");
+        auto *item = new Perf::SidePanelItem(label, this);
+        item->SetGraphColor(scheme->NpuGraphLineColor, scheme->NpuGraphFillColor);
+        item->SetGraphSource(npu.UtilHistory);
+        item->setProperty("deviceId", QString("npu:%1").arg(i));
+        item->setProperty("deviceName", label);
+        item->setProperty("deviceGroup", static_cast<int>(Perf::SidePanelGroup::Npu));
+        this->m_sidePanel->AddItem(item);
+        this->m_npuItems.append(item);
+
+        auto *detail = new Perf::NpuDetailWidget(this);
+        detail->SetNpu(i);
+        this->m_stack->addWidget(detail);
+        this->m_npuDetails.append(detail);
+        this->m_detailByItem.insert(item, detail);
+    }
+}
+
+void PerformanceWidget::setupBatteryPanels()
+{
+    const ColorScheme *scheme = ColorScheme::GetCurrent();
+    const int count = Metrics::GetBattery()->BatteryCount();
+    for (int i = 0; i < count; ++i)
+    {
+        const Battery::BatteryInfo &bat = Metrics::GetBattery()->FromIndex(i);
+        this->m_batteryNames.append(bat.ID);
+
+        const QString label = (count > 1) ? tr("Battery %1").arg(i) : tr("Battery");
+        auto *item = new Perf::SidePanelItem(label, this);
+        item->SetGraphColor(scheme->BatteryGraphLineColor, scheme->BatteryGraphFillColor);
+        item->SetGraphSource(bat.CapacityHistory);
+        item->setProperty("deviceId", QString("battery:%1").arg(i));
+        item->setProperty("deviceName", label);
+        item->setProperty("deviceGroup", static_cast<int>(Perf::SidePanelGroup::Battery));
+        this->m_sidePanel->AddItem(item);
+        this->m_batteryItems.append(item);
+
+        auto *detail = new Perf::BatteryDetailWidget(this);
+        detail->SetBattery(i);
+        this->m_stack->addWidget(detail);
+        this->m_batteryDetails.append(detail);
         this->m_detailByItem.insert(item, detail);
     }
 }
@@ -452,6 +518,52 @@ void PerformanceWidget::onProviderUpdated()
         }
     }
 
+    if (CFG->PerfShowNpu)
+    {
+        for (int i = 0; i < this->m_npuItems.size(); ++i)
+        {
+            if (i >= Metrics::GetNPU()->NpuCount())
+                break;
+            auto *item = this->m_npuItems.at(i);
+            if (!item || !this->m_sidePanel->IsItemVisible(item))
+                continue;
+
+            const NPU::NPUInfo &npu = Metrics::GetNPU()->FromIndex(i);
+            const QString utilText = QString::number(npu.UtilPct, 'f', 0) + "%";
+            QString sub = utilText;
+            if (npu.CurrentFreqMHz > 0)
+                sub = QString("%1 %2MHz").arg(utilText, QString::number(npu.CurrentFreqMHz));
+            else if (!npu.PowerState.isEmpty() && npu.PowerState != QLatin1String("D0"))
+                sub = QString("%1 (%2)").arg(utilText, npu.PowerState);
+            item->Update(sub);
+        }
+    }
+
+    if (CFG->PerfShowBattery)
+    {
+        for (int i = 0; i < this->m_batteryItems.size(); ++i)
+        {
+            if (i >= Metrics::GetBattery()->BatteryCount())
+                break;
+            auto *item = this->m_batteryItems.at(i);
+            if (!item || !this->m_sidePanel->IsItemVisible(item))
+                continue;
+
+            const Battery::BatteryInfo &bat = Metrics::GetBattery()->FromIndex(i);
+            const QString pctText = QString::number(bat.CapacityPct, 'f', 0) + "%";
+            QString sub;
+            if (bat.PowerDrawW > 0.05)
+                sub = QString("%1 (+%2 W)").arg(pctText, QString::number(bat.PowerDrawW, 'f', 1));
+            else if (bat.PowerDrawW < -0.05)
+                sub = QString("%1 (%2 W)").arg(pctText, QString::number(bat.PowerDrawW, 'f', 1));
+            else if (!bat.StatusStr.isEmpty())
+                sub = QString("%1 (%2)").arg(pctText, bat.StatusStr);
+            else
+                sub = pctText;
+            item->Update(sub);
+        }
+    }
+
     if (CFG->PerfShowNetwork)
     {
         for (int i = 0; i < this->m_networkItems.size(); ++i)
@@ -544,6 +656,12 @@ void PerformanceWidget::onSidePanelContextMenu(Perf::SidePanelItem *item, const 
 
     QAction *showAllGpu = nullptr;
     QHash<QAction *, QString> gpuActionMap;
+
+    QAction *showAllNpu = nullptr;
+    QHash<QAction *, QString> npuActionMap;
+
+    QAction *showAllBattery = nullptr;
+    QHash<QAction *, QString> batteryActionMap;
 
     const QList<Perf::SidePanelGroup> groupOrder = sanitizeSidePanelGroupOrder(CFG->PerfSidePanelGroupOrder);
     for (Perf::SidePanelGroup group : groupOrder)
@@ -650,6 +768,52 @@ void PerformanceWidget::onSidePanelContextMenu(Perf::SidePanelItem *item, const 
                 }
                 break;
             }
+            case Perf::SidePanelGroup::Npu:
+            {
+                QMenu *npuMenu = menu.addMenu(Perf::SidePanelGroupLabel(group));
+                showAllNpu = npuMenu->addAction(tr("Show NPU"));
+                showAllNpu->setCheckable(true);
+                showAllNpu->setChecked(CFG->PerfShowNpu);
+
+                if (!this->m_npuItems.isEmpty())
+                {
+                    npuMenu->addSeparator();
+                    for (Perf::SidePanelItem *npuItem : std::as_const(this->m_npuItems))
+                    {
+                        const QString devId = npuItem->property("deviceId").toString();
+                        const QString devName = npuItem->property("deviceName").toString();
+                        QAction *act = npuMenu->addAction(devName);
+                        act->setCheckable(true);
+                        act->setChecked(CFG->PerfShowNpu && !CFG->PerfHiddenDevices.contains(devId));
+                        act->setEnabled(CFG->PerfShowNpu);
+                        npuActionMap.insert(act, devId);
+                    }
+                }
+                break;
+            }
+            case Perf::SidePanelGroup::Battery:
+            {
+                QMenu *batteryMenu = menu.addMenu(Perf::SidePanelGroupLabel(group));
+                showAllBattery = batteryMenu->addAction(tr("Show Battery"));
+                showAllBattery->setCheckable(true);
+                showAllBattery->setChecked(CFG->PerfShowBattery);
+
+                if (!this->m_batteryItems.isEmpty())
+                {
+                    batteryMenu->addSeparator();
+                    for (Perf::SidePanelItem *batItem : std::as_const(this->m_batteryItems))
+                    {
+                        const QString devId = batItem->property("deviceId").toString();
+                        const QString devName = batItem->property("deviceName").toString();
+                        QAction *act = batteryMenu->addAction(devName);
+                        act->setCheckable(true);
+                        act->setChecked(CFG->PerfShowBattery && !CFG->PerfHiddenDevices.contains(devId));
+                        act->setEnabled(CFG->PerfShowBattery);
+                        batteryActionMap.insert(act, devId);
+                    }
+                }
+                break;
+            }
         }
     }
 
@@ -727,6 +891,8 @@ void PerformanceWidget::onSidePanelContextMenu(Perf::SidePanelItem *item, const 
         CFG->PerfShowDisks = true;
         CFG->PerfShowNetwork = true;
         CFG->PerfShowGpu = true;
+        CFG->PerfShowNpu = true;
+        CFG->PerfShowBattery = true;
         CFG->PerfHiddenDevices.clear();
         CFG->PerfHideVirtualNetworks = false;
         this->applyPanelVisibility();
@@ -806,6 +972,14 @@ void PerformanceWidget::onSidePanelContextMenu(Perf::SidePanelItem *item, const 
     {
         CFG->PerfShowGpu = showAllGpu->isChecked();
     }
+    else if (picked == showAllNpu)
+    {
+        CFG->PerfShowNpu = showAllNpu->isChecked();
+    }
+    else if (picked == showAllBattery)
+    {
+        CFG->PerfShowBattery = showAllBattery->isChecked();
+    }
     else if (picked == hideVirtualNet)
     {
         CFG->PerfHideVirtualNetworks = hideVirtualNet->isChecked();
@@ -829,6 +1003,22 @@ void PerformanceWidget::onSidePanelContextMenu(Perf::SidePanelItem *item, const 
     else if (gpuActionMap.contains(picked))
     {
         const QString devId = gpuActionMap.value(picked);
+        if (picked->isChecked())
+            CFG->PerfHiddenDevices.removeAll(devId);
+        else if (!CFG->PerfHiddenDevices.contains(devId))
+            CFG->PerfHiddenDevices.append(devId);
+    }
+    else if (npuActionMap.contains(picked))
+    {
+        const QString devId = npuActionMap.value(picked);
+        if (picked->isChecked())
+            CFG->PerfHiddenDevices.removeAll(devId);
+        else if (!CFG->PerfHiddenDevices.contains(devId))
+            CFG->PerfHiddenDevices.append(devId);
+    }
+    else if (batteryActionMap.contains(picked))
+    {
+        const QString devId = batteryActionMap.value(picked);
         if (picked->isChecked())
             CFG->PerfHiddenDevices.removeAll(devId);
         else if (!CFG->PerfHiddenDevices.contains(devId))
@@ -865,6 +1055,10 @@ void PerformanceWidget::ApplyColorScheme()
         applySidePanelItem(item, scheme->NetworkGraphLineColor, scheme->NetworkGraphFillColor);
     for (Perf::SidePanelItem *item : std::as_const(this->m_gpuItems))
         applySidePanelItem(item, scheme->GpuGraphLineColor, scheme->GpuGraphFillColor);
+    for (Perf::SidePanelItem *item : std::as_const(this->m_npuItems))
+        applySidePanelItem(item, scheme->NpuGraphLineColor, scheme->NpuGraphFillColor);
+    for (Perf::SidePanelItem *item : std::as_const(this->m_batteryItems))
+        applySidePanelItem(item, scheme->BatteryGraphLineColor, scheme->BatteryGraphFillColor);
 
     this->m_cpuDetail->ApplyColorScheme();
     this->m_memDetail->ApplyColorScheme();
@@ -876,6 +1070,12 @@ void PerformanceWidget::ApplyColorScheme()
         if (detail)
             detail->ApplyColorScheme();
     for (Perf::GpuDetailWidget *detail : std::as_const(this->m_gpuDetails))
+        if (detail)
+            detail->ApplyColorScheme();
+    for (Perf::NpuDetailWidget *detail : std::as_const(this->m_npuDetails))
+        if (detail)
+            detail->ApplyColorScheme();
+    for (Perf::BatteryDetailWidget *detail : std::as_const(this->m_batteryDetails))
         if (detail)
             detail->ApplyColorScheme();
 
@@ -916,6 +1116,14 @@ void PerformanceWidget::applySidePanelOrder()
                 break;
             case Perf::SidePanelGroup::Gpu:
                 for (Perf::SidePanelItem *item : std::as_const(this->m_gpuItems))
+                    items.append(item);
+                break;
+            case Perf::SidePanelGroup::Npu:
+                for (Perf::SidePanelItem *item : std::as_const(this->m_npuItems))
+                    items.append(item);
+                break;
+            case Perf::SidePanelGroup::Battery:
+                for (Perf::SidePanelItem *item : std::as_const(this->m_batteryItems))
                     items.append(item);
                 break;
         }
@@ -968,8 +1176,26 @@ void PerformanceWidget::applyPanelVisibility()
             anyGpuVis = true;
     }
 
+    bool anyNpuVis = false;
+    for (Perf::SidePanelItem *item : std::as_const(this->m_npuItems))
+    {
+        const bool vis = isItemVisible(item, CFG->PerfShowNpu);
+        this->m_sidePanel->SetItemVisible(item, vis);
+        if (vis)
+            anyNpuVis = true;
+    }
+
+    bool anyBatteryVis = false;
+    for (Perf::SidePanelItem *item : std::as_const(this->m_batteryItems))
+    {
+        const bool vis = isItemVisible(item, CFG->PerfShowBattery);
+        this->m_sidePanel->SetItemVisible(item, vis);
+        if (vis)
+            anyBatteryVis = true;
+    }
+
     // Safety fallback: ensure at least one item remains visible
-    if (!cpuVis && !memVis && !swapVis && !anyDiskVis && !anyNetVis && !anyGpuVis)
+    if (!cpuVis && !memVis && !swapVis && !anyDiskVis && !anyNetVis && !anyGpuVis && !anyNpuVis && !anyBatteryVis)
     {
         cpuVis = true;
         CFG->PerfShowCpu = true;
@@ -1021,12 +1247,34 @@ void PerformanceWidget::updateSamplingPolicy()
         }
     }
 
+    bool anyNpuVis = false;
+    for (Perf::SidePanelItem *item : std::as_const(this->m_npuItems))
+    {
+        if (this->m_sidePanel->IsItemVisible(item))
+        {
+            anyNpuVis = true;
+            break;
+        }
+    }
+
+    bool anyBatteryVis = false;
+    for (Perf::SidePanelItem *item : std::as_const(this->m_batteryItems))
+    {
+        if (this->m_sidePanel->IsItemVisible(item))
+        {
+            anyBatteryVis = true;
+            break;
+        }
+    }
+
     Metrics::Get()->SetCpuSamplingEnabled(cpuVis);
     Metrics::Get()->SetMemorySamplingEnabled(memVis);
     Metrics::Get()->SetSwapSamplingEnabled(swapVis);
     Metrics::Get()->SetDiskSamplingEnabled(anyDiskVis);
     Metrics::Get()->SetNetworkSamplingEnabled(anyNetVis);
     Metrics::Get()->SetGpuSamplingEnabled(anyGpuVis);
+    Metrics::Get()->SetNpuSamplingEnabled(anyNpuVis);
+    Metrics::Get()->SetBatterySamplingEnabled(anyBatteryVis);
     Metrics::Get()->SetProcessStatsEnabled(cpuVis && this->m_sidePanel->GetCurrentItem() == this->m_cpuItem);
 }
 
@@ -1046,6 +1294,10 @@ void PerformanceWidget::applySidePanelGridEnabled()
     for (Perf::SidePanelItem *item : std::as_const(this->m_networkItems))
         item->SetGraphGridEnabled(enabled);
     for (Perf::SidePanelItem *item : std::as_const(this->m_gpuItems))
+        item->SetGraphGridEnabled(enabled);
+    for (Perf::SidePanelItem *item : std::as_const(this->m_npuItems))
+        item->SetGraphGridEnabled(enabled);
+    for (Perf::SidePanelItem *item : std::as_const(this->m_batteryItems))
         item->SetGraphGridEnabled(enabled);
 }
 
@@ -1160,6 +1412,16 @@ void PerformanceWidget::setCompactMode(bool compact)
     {
         if (gpu)
             gpu->SetCompactMode(compact);
+    }
+    for (auto *npu : this->m_npuDetails)
+    {
+        if (npu)
+            npu->SetCompactMode(compact);
+    }
+    for (auto *bat : this->m_batteryDetails)
+    {
+        if (bat)
+            bat->SetCompactMode(compact);
     }
 }
 

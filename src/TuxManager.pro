@@ -24,6 +24,8 @@ SOURCES += \
     system/gpu/drmbackend.cpp \
     system/gpu/intelsysmanbackend.cpp \
     system/gpu/nvmlbackend.cpp \
+    system/npu.cpp \
+    system/battery.cpp \
     system/kernel.cpp \
     system/memory.cpp \
     system/network.cpp \
@@ -59,6 +61,8 @@ SOURCES += \
     perf/diskdetailwidget.cpp \
     perf/networkdetailwidget.cpp \
     perf/gpudetailwidget.cpp \
+    perf/npudetailwidget.cpp \
+    perf/batterydetailwidget.cpp \
     perf/swapgrapharea.cpp \
     perf/swapdetailwidget.cpp \
     perf/memorybar.cpp \
@@ -81,6 +85,8 @@ HEADERS += \
     system/gpu/drmbackend.h \
     system/gpu/intelsysmanbackend.h \
     system/gpu/nvmlbackend.h \
+    system/npu.h \
+    system/battery.h \
     system/kernel.h \
     system/memory.h \
     system/network.h \
@@ -117,6 +123,8 @@ HEADERS += \
     perf/diskdetailwidget.h \
     perf/networkdetailwidget.h \
     perf/gpudetailwidget.h \
+    perf/npudetailwidget.h \
+    perf/batterydetailwidget.h \
     perf/swapgrapharea.h \
     perf/swapdetailwidget.h \
     perf/memorybar.h \
@@ -138,6 +146,8 @@ FORMS += \
     perf/diskdetailwidget.ui \
     perf/networkdetailwidget.ui \
     perf/gpudetailwidget.ui \
+    perf/npudetailwidget.ui \
+    perf/batterydetailwidget.ui \
     perf/swapdetailwidget.ui \
     perf/memorydetailwidget.ui \
     perf/smartdatadialog.ui

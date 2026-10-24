@@ -127,6 +127,26 @@ GpuDetailWidget::GpuDetailWidget(QWidget *parent) : QWidget(parent), ui(new Ui::
 
     WidgetStyle::ApplyTextStyle(this->ui->titleLabel, scheme->GpuTitleColor, 18, true);
     WidgetStyle::ApplyTextStyle(this->ui->copyBwLegendLabel, scheme->StatLabelColor);
+
+    if (QGridLayout *statsGrid = this->findChild<QGridLayout *>("statsGrid"))
+    {
+        for (int row = 0; row < statsGrid->rowCount(); ++row)
+        {
+            for (int column = 0; column < statsGrid->columnCount(); ++column)
+            {
+                if (QLayoutItem *item = statsGrid->itemAtPosition(row, column))
+                {
+                    if (QLabel *label = qobject_cast<QLabel *>(item->widget()))
+                    {
+                        if (column % 2 == 0)
+                            WidgetStyle::ApplyTextStyle(label, scheme->StatLabelColor, 10);
+                        else
+                            WidgetStyle::ApplyTextStyle(label, scheme->DarkMode ? QColor(0xee, 0xee, 0xee) : QColor(0x22, 0x22, 0x22), 11);
+                    }
+                }
+            }
+        }
+    }
 }
 
 GpuDetailWidget::~GpuDetailWidget()
@@ -167,6 +187,27 @@ void GpuDetailWidget::ApplyColorScheme()
     applyGraph(this->ui->dedicatedMemGraphWidget);
     applyGraph(this->ui->sharedMemGraphWidget);
     applyGraph(this->ui->copyBwGraphWidget);
+
+    if (QGridLayout *statsGrid = this->findChild<QGridLayout *>("statsGrid"))
+    {
+        for (int row = 0; row < statsGrid->rowCount(); ++row)
+        {
+            for (int column = 0; column < statsGrid->columnCount(); ++column)
+            {
+                if (QLayoutItem *item = statsGrid->itemAtPosition(row, column))
+                {
+                    if (QLabel *label = qobject_cast<QLabel *>(item->widget()))
+                    {
+                        if (column % 2 == 0)
+                            WidgetStyle::ApplyTextStyle(label, scheme->StatLabelColor, 10);
+                        else
+                            WidgetStyle::ApplyTextStyle(label, scheme->DarkMode ? QColor(0xee, 0xee, 0xee) : QColor(0x22, 0x22, 0x22), 11);
+                    }
+                }
+            }
+        }
+    }
+
     this->update();
 }
 

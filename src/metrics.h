@@ -21,6 +21,8 @@
 
 #include "system/cpu.h"
 #include "system/gpu.h"
+#include "system/npu.h"
+#include "system/battery.h"
 #include "system/memory.h"
 #include "system/network.h"
 #include "system/storage.h"
@@ -40,6 +42,8 @@ class Metrics : public QObject
     public:
         static CPU      *GetCPU();
         static GPU      *GetGPU();
+        static NPU      *GetNPU();
+        static Battery  *GetBattery();
         static Network  *GetNetwork();
         static Memory   *GetMemory();
         static Swap     *GetSwap();
@@ -59,12 +63,16 @@ class Metrics : public QObject
         void SetDiskSamplingEnabled(bool enabled) { this->m_diskSamplingEnabled = enabled; }
         void SetNetworkSamplingEnabled(bool enabled) { this->m_networkSamplingEnabled = enabled; }
         void SetGpuSamplingEnabled(bool enabled) { this->m_gpuSamplingEnabled = enabled; }
+        void SetNpuSamplingEnabled(bool enabled) { this->m_npuSamplingEnabled = enabled; }
+        void SetBatterySamplingEnabled(bool enabled) { this->m_batterySamplingEnabled = enabled; }
         bool IsCpuSamplingEnabled() const { return this->m_cpuSamplingEnabled; }
         bool IsMemorySamplingEnabled() const { return this->m_memorySamplingEnabled; }
         bool IsSwapSamplingEnabled() const { return this->m_swapSamplingEnabled; }
         bool IsDiskSamplingEnabled() const { return this->m_diskSamplingEnabled; }
         bool IsNetworkSamplingEnabled() const { return this->m_networkSamplingEnabled; }
         bool IsGpuSamplingEnabled() const { return this->m_gpuSamplingEnabled; }
+        bool IsNpuSamplingEnabled() const { return this->m_npuSamplingEnabled; }
+        bool IsBatterySamplingEnabled() const { return this->m_batterySamplingEnabled; }
 
     signals:
         void updated();
@@ -88,6 +96,8 @@ class Metrics : public QObject
         bool    m_diskSamplingEnabled { true };
         bool    m_networkSamplingEnabled { true };
         bool    m_gpuSamplingEnabled { true };
+        bool    m_npuSamplingEnabled { true };
+        bool    m_batterySamplingEnabled { true };
 };
 
 #endif // METRICS_H

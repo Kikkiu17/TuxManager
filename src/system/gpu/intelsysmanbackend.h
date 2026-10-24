@@ -23,6 +23,7 @@
 
 #include <QElapsedTimer>
 #include <QHash>
+#include <QSet>
 #include <QStringList>
 #include <memory>
 #include <vector>
@@ -36,6 +37,7 @@ class GpuIntelSysmanBackend
         void Detect();
         bool Sample(std::vector<std::unique_ptr<GPU::GPUInfo>> &gpus);
         bool IsAvailable() const { return this->m_available; }
+        const QSet<QString> &ClaimedBdfs() const { return this->m_claimedBdfs; }
 
     private:
         struct Snapshot
@@ -96,6 +98,7 @@ class GpuIntelSysmanBackend
 
         bool    m_available { false };
         void   *m_libHandle { nullptr };
+        QSet<QString> m_claimedBdfs;
         QHash<QString, Snapshot> m_prevEnergyById;
         QHash<QString, Snapshot> m_prevPciRxById;
         QHash<QString, Snapshot> m_prevPciTxById;

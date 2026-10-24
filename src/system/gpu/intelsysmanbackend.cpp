@@ -232,6 +232,35 @@ namespace
     using FnZesDriverGetExtensionProperties = ZeResult (*)(ZesDriverHandle, uint32_t *, void *);
     using FnZeInit = ZeResult (*)(uint32_t);
 
+    static constexpr uint32_t ZE_STRUCTURE_TYPE_DEVICE_PROPERTIES = 0x3;
+    static constexpr uint32_t ZE_DEVICE_TYPE_GPU = 1;
+
+    struct ZeDeviceProperties
+    {
+        uint32_t stype;
+        void *pNext;
+        uint32_t type;
+        uint32_t vendorId;
+        uint32_t deviceId;
+        uint32_t flags;
+        uint32_t subdeviceId;
+        uint32_t coreClockRate;
+        uint64_t maxMemAllocSize;
+        uint32_t maxHardwareContexts;
+        uint32_t maxCommandQueuePriority;
+        uint32_t numThreadsPerEU;
+        uint32_t physicalEUSimdWidth;
+        uint32_t numEUsPerSubslice;
+        uint32_t numSubslicesPerSlice;
+        uint32_t numSlices;
+        uint64_t timerResolution;
+        uint8_t  uuid[16];
+        char     name[256];
+        uint8_t  padding[512];
+    };
+
+    using FnZeDeviceGetProperties = ZeResult (*)(ZesDeviceHandle, ZeDeviceProperties *);
+
     FnZesInit pZesInit = nullptr;
     FnZesDriverGet pZesDriverGet = nullptr;
     FnZesDeviceGet pZesDeviceGet = nullptr;
@@ -253,6 +282,7 @@ namespace
     FnZesPowerGetProperties pZesPowerGetProperties = nullptr;
     FnZesPowerGetEnergyCounter pZesPowerGetEnergyCounter = nullptr;
     FnZeInit pZeInit = nullptr;
+    FnZeDeviceGetProperties pZeDeviceGetProperties = nullptr;
 
     GPU::GPUInfo *findOrCreateGpu(std::vector<std::unique_ptr<GPU::GPUInfo>> &gpus, const QString &id)
     {
@@ -456,6 +486,7 @@ void GpuIntelSysmanBackend::Detect()
     pZesPowerGetProperties = reinterpret_cast<FnZesPowerGetProperties>(::dlsym(this->m_libHandle, "zesPowerGetProperties"));
     pZesPowerGetEnergyCounter = reinterpret_cast<FnZesPowerGetEnergyCounter>(::dlsym(this->m_libHandle, "zesPowerGetEnergyCounter"));
     pZeInit = reinterpret_cast<FnZeInit>(::dlsym(this->m_libHandle, "zeInit"));
+    pZeDeviceGetProperties = reinterpret_cast<FnZeDeviceGetProperties>(::dlsym(this->m_libHandle, "zeDeviceGetProperties"));
 
     const bool symbolsOk = pZesInit && pZesDriverGet && pZesDeviceGet
                            && pZesDevicePciGetProperties && pZesDeviceEnumEngineGroups
@@ -500,19 +531,53 @@ void GpuIntelSysmanBackend::Detect()
     }
 
     bool hasGpu = false;
+    this->m_claimedBdfs.clear();
+
     for (ZesDriverHandle driver : drivers)
     {
         uint32_t deviceCount = 0;
-        if (pZesDeviceGet(driver, &deviceCount, nullptr) == ZE_RESULT_SUCCESS && deviceCount > 0)
+        if (pZesDeviceGet(driver, &deviceCount, nullptr) != ZE_RESULT_SUCCESS || deviceCount == 0)
+            continue;
+
+        std::vector<ZesDeviceHandle> devices(deviceCount);
+        if (pZesDeviceGet(driver, &deviceCount, devices.data()) != ZE_RESULT_SUCCESS)
+            continue;
+
+        for (ZesDeviceHandle device : devices)
         {
+            if (pZeDeviceGetProperties)
+            {
+                ZeDeviceProperties devProps {};
+                devProps.stype = ZE_STRUCTURE_TYPE_DEVICE_PROPERTIES;
+                if (pZeDeviceGetProperties(device, &devProps) == ZE_RESULT_SUCCESS)
+                {
+                    if (devProps.type != ZE_DEVICE_TYPE_GPU)
+                    {
+                        LOG_DEBUG(QStringLiteral("Intel Sysman scan: skipping non-GPU Level Zero device (type=%1)")
+                                      .arg(devProps.type));
+                        continue;
+                    }
+                }
+            }
+
+            ZesPciProperties pciProps {};
+            pciProps.stype = ZES_STRUCTURE_TYPE_PCI_PROPERTIES;
+            pciProps.pNext = nullptr;
+            if (pZesDevicePciGetProperties(device, &pciProps) != ZE_RESULT_SUCCESS)
+            {
+                LOG_DEBUG("Intel Sysman scan: device does not support PCI properties, skipping");
+                continue;
+            }
+
+            const QString bdf = pciIdFromAddress(pciProps.address);
+            this->m_claimedBdfs.insert(bdf);
             hasGpu = true;
-            break;
         }
     }
 
     if (!hasGpu)
     {
-        LOG_DEBUG("Intel Sysman: no devices found");
+        LOG_DEBUG("Intel Sysman: no supported GPU devices found");
         this->unload();
         return;
     }
@@ -549,6 +614,14 @@ bool GpuIntelSysmanBackend::Sample(std::vector<std::unique_ptr<GPU::GPUInfo>> &g
 
         for (ZesDeviceHandle device : devices)
         {
+            if (pZeDeviceGetProperties)
+            {
+                ZeDeviceProperties devProps {};
+                devProps.stype = ZE_STRUCTURE_TYPE_DEVICE_PROPERTIES;
+                if (pZeDeviceGetProperties(device, &devProps) == ZE_RESULT_SUCCESS && devProps.type != ZE_DEVICE_TYPE_GPU)
+                    continue;
+            }
+
             ZesPciProperties pciProps {};
             pciProps.stype = ZES_STRUCTURE_TYPE_PCI_PROPERTIES;
             pciProps.pNext = nullptr;
@@ -1203,6 +1276,7 @@ void GpuIntelSysmanBackend::setHwmonTempFallback(bool active)
 void GpuIntelSysmanBackend::unload()
 {
     this->m_available = false;
+    this->m_claimedBdfs.clear();
     this->m_prevEnergyById.clear();
     this->m_prevPciRxById.clear();
     this->m_prevPciTxById.clear();
@@ -1233,6 +1307,7 @@ void GpuIntelSysmanBackend::unload()
     pZesPowerGetProperties = nullptr;
     pZesPowerGetEnergyCounter = nullptr;
     pZeInit = nullptr;
+    pZeDeviceGetProperties = nullptr;
 
     if (this->m_libHandle)
     {

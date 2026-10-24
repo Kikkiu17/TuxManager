@@ -24,12 +24,14 @@ namespace WidgetStyle
 {
     QString TextStyle(const QColor &color, int fontSizePt, bool bold)
     {
-        QString style = QString("color: %1;").arg(color.name(QColor::HexArgb));
+        QString style;
+        if (color.isValid())
+            style += QString("color: %1;").arg(color.name(QColor::HexArgb));
         if (fontSizePt > 0)
             style += QString(" font-size: %1pt;").arg(fontSizePt);
         if (bold)
             style += " font-weight: bold;";
-        return style;
+        return style.trimmed();
     }
 
     void ApplyTextStyle(QWidget *widget, const QColor &color, int fontSizePt, bool bold)

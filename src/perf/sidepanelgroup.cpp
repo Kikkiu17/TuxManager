@@ -32,6 +32,8 @@ namespace Perf
             case SidePanelGroup::Disks:   return QStringLiteral("disks");
             case SidePanelGroup::Network: return QStringLiteral("network");
             case SidePanelGroup::Gpu:     return QStringLiteral("gpu");
+            case SidePanelGroup::Npu:     return QStringLiteral("npu");
+            case SidePanelGroup::Battery: return QStringLiteral("battery");
         }
 
         return {};
@@ -47,6 +49,8 @@ namespace Perf
             case SidePanelGroup::Disks:   return QObject::tr("Disks");
             case SidePanelGroup::Network: return QObject::tr("NICs");
             case SidePanelGroup::Gpu:     return QObject::tr("GPUs");
+            case SidePanelGroup::Npu:     return QObject::tr("NPUs");
+            case SidePanelGroup::Battery: return QObject::tr("Battery");
         }
 
         return {};
@@ -66,6 +70,10 @@ namespace Perf
             return SidePanelGroup::Network;
         if (id == QStringLiteral("gpu"))
             return SidePanelGroup::Gpu;
+        if (id == QStringLiteral("npu"))
+            return SidePanelGroup::Npu;
+        if (id == QStringLiteral("battery"))
+            return SidePanelGroup::Battery;
         return std::nullopt;
     }
 
@@ -77,7 +85,9 @@ namespace Perf
             SidePanelGroup::Swap,
             SidePanelGroup::Disks,
             SidePanelGroup::Network,
-            SidePanelGroup::Gpu
+            SidePanelGroup::Gpu,
+            SidePanelGroup::Npu,
+            SidePanelGroup::Battery
         };
     }
 }

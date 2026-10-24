@@ -1,0 +1,212 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>BatteryDetailWidget</class>
+ <widget class="QWidget" name="BatteryDetailWidget">
+  <property name="geometry">
+   <rect><x>0</x><y>0</y><width>760</width><height>620</height></rect>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout" stretch="0,0,5,0,0,5,0,0">
+   <property name="leftMargin"><number>12</number></property>
+   <property name="topMargin"><number>10</number></property>
+   <property name="rightMargin"><number>12</number></property>
+   <property name="bottomMargin"><number>10</number></property>
+   <property name="spacing"><number>6</number></property>
+
+   <item>
+    <layout class="QHBoxLayout" name="headerLayout">
+     <item>
+      <widget class="QLabel" name="titleLabel">
+       <property name="text"><string>Battery</string></property>
+       <property name="styleSheet"><string>font-size: 18pt; font-weight: bold;</string></property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLabel" name="modelNameLabel">
+       <property name="text"><string></string></property>
+       <property name="alignment"><set>Qt::AlignLeft|Qt::AlignVCenter</set></property>
+       <property name="styleSheet"><string>font-size: 8pt;</string></property>
+      </widget>
+     </item>
+     <item>
+      <spacer>
+       <property name="orientation"><enum>Qt::Horizontal</enum></property>
+       <property name="sizeHint" stdset="0"><size><width>40</width><height>0</height></size></property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QLabel" name="statusHeaderLabel">
+       <property name="text"><string></string></property>
+       <property name="alignment"><set>Qt::AlignRight|Qt::AlignVCenter</set></property>
+       <property name="styleSheet"><string>font-size: 18pt;</string></property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+
+   <item>
+    <layout class="QHBoxLayout" name="capacityLabelLayout">
+     <item>
+      <widget class="QLabel" name="capacityGraphLabel">
+       <property name="text"><string>Charge level</string></property>
+       <property name="styleSheet"><string>font-size: 8pt;</string></property>
+      </widget>
+     </item>
+     <item>
+      <spacer>
+       <property name="orientation"><enum>Qt::Horizontal</enum></property>
+       <property name="sizeHint" stdset="0"><size><width>40</width><height>0</height></size></property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QLabel" name="capacityGraphMaxLabel">
+       <property name="text"><string>100%</string></property>
+       <property name="alignment"><set>Qt::AlignRight|Qt::AlignVCenter</set></property>
+       <property name="styleSheet"><string>font-size: 8pt;</string></property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+
+   <item>
+    <widget class="Perf::GraphWidget" name="capacityGraphWidget">
+     <property name="minimumHeight"><number>35</number></property>
+     <property name="sizePolicy">
+      <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+       <horstretch>0</horstretch>
+       <verstretch>1</verstretch>
+      </sizepolicy>
+     </property>
+    </widget>
+   </item>
+
+   <item>
+    <layout class="QHBoxLayout" name="capacityTimeAxisLayout">
+     <item>
+      <widget class="QLabel" name="capacityTimeLeftLabel">
+       <property name="text"><string>60 seconds</string></property>
+       <property name="styleSheet"><string>font-size: 8pt;</string></property>
+      </widget>
+     </item>
+     <item>
+      <spacer>
+       <property name="orientation"><enum>Qt::Horizontal</enum></property>
+       <property name="sizeHint" stdset="0"><size><width>40</width><height>0</height></size></property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QLabel" name="capacityTimeRightLabel">
+       <property name="text"><string>0</string></property>
+       <property name="alignment"><set>Qt::AlignRight|Qt::AlignVCenter</set></property>
+       <property name="styleSheet"><string>font-size: 8pt;</string></property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+
+   <item>
+    <layout class="QHBoxLayout" name="powerLabelLayout">
+     <item>
+      <widget class="QLabel" name="powerGraphLabel">
+       <property name="text"><string>Power draw</string></property>
+       <property name="styleSheet"><string>font-size: 8pt;</string></property>
+      </widget>
+     </item>
+     <item>
+      <spacer>
+       <property name="orientation"><enum>Qt::Horizontal</enum></property>
+       <property name="sizeHint" stdset="0"><size><width>40</width><height>0</height></size></property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QLabel" name="powerGraphMaxLabel">
+       <property name="text"><string>0.0 W</string></property>
+       <property name="alignment"><set>Qt::AlignRight|Qt::AlignVCenter</set></property>
+       <property name="styleSheet"><string>font-size: 8pt;</string></property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+
+   <item>
+    <widget class="Perf::GraphWidget" name="powerGraphWidget">
+     <property name="minimumHeight"><number>35</number></property>
+     <property name="sizePolicy">
+      <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+       <horstretch>0</horstretch>
+       <verstretch>1</verstretch>
+      </sizepolicy>
+     </property>
+    </widget>
+   </item>
+
+   <item>
+    <layout class="QHBoxLayout" name="powerTimeAxisLayout">
+     <item>
+      <widget class="QLabel" name="powerTimeLeftLabel">
+       <property name="text"><string>60 seconds</string></property>
+       <property name="styleSheet"><string>font-size: 8pt;</string></property>
+      </widget>
+     </item>
+     <item>
+      <spacer>
+       <property name="orientation"><enum>Qt::Horizontal</enum></property>
+       <property name="sizeHint" stdset="0"><size><width>40</width><height>0</height></size></property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QLabel" name="powerTimeRightLabel">
+       <property name="text"><string>0</string></property>
+       <property name="alignment"><set>Qt::AlignRight|Qt::AlignVCenter</set></property>
+       <property name="styleSheet"><string>font-size: 8pt;</string></property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+
+   <item>
+    <layout class="QGridLayout" name="statsGrid">
+     <property name="horizontalSpacing"><number>24</number></property>
+     <property name="verticalSpacing"><number>8</number></property>
+
+     <item row="0" column="0"><widget class="QLabel" name="statStatusLabel"><property name="text"><string>Status</string></property></widget></item>
+     <item row="0" column="1"><widget class="QLabel" name="statStatusValue"><property name="text"><string>—</string></property></widget></item>
+     <item row="0" column="2"><widget class="QLabel" name="statEnergyFullLabel"><property name="text"><string>Full capacity</string></property></widget></item>
+     <item row="0" column="3"><widget class="QLabel" name="statEnergyFullValue"><property name="text"><string>—</string></property></widget></item>
+
+     <item row="1" column="0"><widget class="QLabel" name="statPowerDrawLabel"><property name="text"><string>Battery power</string></property></widget></item>
+     <item row="1" column="1"><widget class="QLabel" name="statPowerDrawValue"><property name="text"><string>—</string></property></widget></item>
+     <item row="1" column="2"><widget class="QLabel" name="statTotalPowerLabel"><property name="text"><string>Total power</string></property></widget></item>
+     <item row="1" column="3"><widget class="QLabel" name="statTotalPowerValue"><property name="text"><string>—</string></property></widget></item>
+
+     <item row="2" column="0"><widget class="QLabel" name="statVoltageLabel"><property name="text"><string>Voltage</string></property></widget></item>
+     <item row="2" column="1"><widget class="QLabel" name="statVoltageValue"><property name="text"><string>—</string></property></widget></item>
+     <item row="2" column="2"><widget class="QLabel" name="statEnergyNowLabel"><property name="text"><string>Remaining energy</string></property></widget></item>
+     <item row="2" column="3"><widget class="QLabel" name="statEnergyNowValue"><property name="text"><string>—</string></property></widget></item>
+
+     <item row="3" column="0"><widget class="QLabel" name="statTimeRemainingLabel"><property name="text"><string>Estimated time</string></property></widget></item>
+     <item row="3" column="1"><widget class="QLabel" name="statTimeRemainingValue"><property name="text"><string>—</string></property></widget></item>
+     <item row="3" column="2"><widget class="QLabel" name="statHealthLabel"><property name="text"><string>Battery health</string></property></widget></item>
+     <item row="3" column="3"><widget class="QLabel" name="statHealthValue"><property name="text"><string>—</string></property></widget></item>
+
+     <item row="4" column="0"><widget class="QLabel" name="statTechLabel"><property name="text"><string>Technology</string></property></widget></item>
+     <item row="4" column="1"><widget class="QLabel" name="statTechValue"><property name="text"><string>—</string></property></widget></item>
+     <item row="4" column="2"><widget class="QLabel" name="statCycleCountLabel"><property name="text"><string>Cycle count</string></property></widget></item>
+     <item row="4" column="3"><widget class="QLabel" name="statCycleCountValue"><property name="text"><string>—</string></property></widget></item>
+
+     <item row="5" column="0"><widget class="QLabel" name="statDeviceLabel"><property name="text"><string>Device</string></property></widget></item>
+     <item row="5" column="1"><widget class="QLabel" name="statDeviceValue"><property name="text"><string>—</string></property></widget></item>
+    </layout>
+   </item>
+
+  </layout>
+ </widget>
+ <customwidgets>
+  <customwidget>
+   <class>Perf::GraphWidget</class>
+   <extends>QWidget</extends>
+   <header>perf/graphwidget.h</header>
+  </customwidget>
+ </customwidgets>
+ <resources/>
+ <connections/>
+</ui>

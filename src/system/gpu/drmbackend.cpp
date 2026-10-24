@@ -22,6 +22,7 @@
 
 #include <QDir>
 #include <QFileInfo>
+#include <QProcess>
 #include <QSet>
 #include <QSysInfo>
 #include <limits.h>
@@ -90,6 +91,11 @@ namespace
 
 void GpuDrmBackend::Detect(bool skipNvidia, bool skipAmd, bool skipIntel)
 {
+    this->Detect(skipNvidia, skipAmd, QSet<QString>(), skipIntel);
+}
+
+void GpuDrmBackend::Detect(bool skipNvidia, bool skipAmd, const QSet<QString> &claimedIntelBdfs, bool skipIntel)
+{
     LOG_DEBUG("Detecting DRM GPUs");
 
     this->m_cards.clear();
@@ -139,7 +145,8 @@ void GpuDrmBackend::Detect(bool skipNvidia, bool skipAmd, bool skipIntel)
 
         if ((skipNvidia && vendorStr == QLatin1String("0x10de"))
             || (skipAmd && vendorStr == QLatin1String("0x1002"))
-            || (skipIntel && vendorStr == QLatin1String("0x8086")))
+            || (skipIntel && vendorStr == QLatin1String("0x8086"))
+            || (claimedIntelBdfs.contains(card.ID) && vendorStr == QLatin1String("0x8086")))
             continue;
 
         if (!card.DriverName.isEmpty())
@@ -150,6 +157,13 @@ void GpuDrmBackend::Detect(bool skipNvidia, bool skipAmd, bool skipIntel)
         }
         if (card.DriverVersion.isEmpty())
             card.DriverVersion = QSysInfo::kernelVersion();
+
+        const QString actFreq = drmDir.filePath(entry + QStringLiteral("/gt_act_freq_mhz"));
+        if (QFileInfo::exists(actFreq))
+            card.ActFreqPath = actFreq;
+        const QString curFreq = drmDir.filePath(entry + QStringLiteral("/gt_cur_freq_mhz"));
+        if (QFileInfo::exists(curFreq))
+            card.CurFreqPath = curFreq;
 
         const QString busyPath = devPath + QStringLiteral("/gpu_busy_percent");
         if (QFileInfo::exists(busyPath))
@@ -194,7 +208,43 @@ void GpuDrmBackend::Detect(bool skipNvidia, bool skipAmd, bool skipIntel)
             continue;
         }
 
-        LOG_DEBUG("Found DRM GPU: " + entry);
+        // Resolve GPU marketing name via lspci if available
+        if (!card.ID.isEmpty())
+        {
+            QProcess proc;
+            proc.start(QStringLiteral("lspci"), {QStringLiteral("-s"), card.ID});
+            if (proc.waitForFinished(1000))
+            {
+                QString out = QString::fromUtf8(proc.readAllStandardOutput()).trimmed();
+                if (!out.isEmpty())
+                {
+                    int colon1 = out.indexOf(QLatin1Char(':'));
+                    if (colon1 != -1)
+                    {
+                        QString rest = out.mid(colon1 + 1).trimmed();
+                        int colon2 = rest.indexOf(QLatin1Char(':'));
+                        if (colon2 != -1)
+                            card.Name = rest.mid(colon2 + 1).trimmed();
+                        else
+                            card.Name = rest;
+                    }
+                    int revIdx = card.Name.lastIndexOf(QStringLiteral("(rev"));
+                    if (revIdx != -1)
+                        card.Name = card.Name.left(revIdx).trimmed();
+                }
+            }
+        }
+        if (card.Name.isEmpty())
+        {
+            if (card.Vendor == QLatin1String("0x1002"))
+                card.Name = QStringLiteral("AMD Radeon");
+            else if (card.Vendor == QLatin1String("0x8086"))
+                card.Name = QStringLiteral("Intel Graphics");
+            else
+                card.Name = QStringLiteral("GPU");
+        }
+
+        LOG_DEBUG("Found DRM GPU: " + entry + " (" + card.Name + ")");
         this->m_cards.append(card);
     }
 }
@@ -211,13 +261,7 @@ bool GpuDrmBackend::Sample(std::vector<std::unique_ptr<GPU::GPUInfo>> &gpus)
         gpu.ID = card.ID;
         gpu.DriverVersion = card.DriverVersion;
         gpu.Backend = card.DriverName.isEmpty() ? QStringLiteral("drm") : card.DriverName;
-
-        if (card.Vendor == QLatin1String("0x1002"))
-            gpu.Name = QStringLiteral("AMD Radeon");
-        else if (card.Vendor == QLatin1String("0x8086"))
-            gpu.Name = QStringLiteral("Intel Graphics");
-        else
-            gpu.Name = QStringLiteral("GPU");
+        gpu.Name = card.Name;
 
         switch (card.Sampler)
         {
@@ -374,6 +418,21 @@ bool GpuDrmBackend::sampleIntelCard(DRMCard &card, GPU::GPUInfo &gpu, qint64 fdI
     gpu.UtilPct = 0.0;
     gpu.CopyTxBps = 0.0;
     gpu.CopyRxBps = 0.0;
+
+    if (!card.ActFreqPath.isEmpty())
+    {
+        bool ok = false;
+        const int freq = Misc::ReadFile(card.ActFreqPath).trimmed().toInt(&ok);
+        if (ok && freq > 0)
+            gpu.CoreClockMHz = freq;
+    }
+    if (gpu.CoreClockMHz <= 0 && !card.CurFreqPath.isEmpty())
+    {
+        bool ok = false;
+        const int freq = Misc::ReadFile(card.CurFreqPath).trimmed().toInt(&ok);
+        if (ok && freq > 0)
+            gpu.CoreClockMHz = freq;
+    }
 
     if (!card.TempPath.isEmpty())
     {

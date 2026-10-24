@@ -23,6 +23,7 @@
 
 #include <QElapsedTimer>
 #include <QPair>
+#include <QSet>
 #include <QVector>
 #include <memory>
 #include <vector>
@@ -30,6 +31,7 @@
 class GpuDrmBackend
 {
     public:
+        void Detect(bool skipNvidia, bool skipAmd, const QSet<QString> &claimedIntelBdfs, bool skipIntel = false);
         void Detect(bool skipNvidia, bool skipAmd, bool skipIntel);
         bool Sample(std::vector<std::unique_ptr<GPU::GPUInfo>> &gpus);
         bool HasCards() const { return !this->m_cards.isEmpty(); }
@@ -44,6 +46,7 @@ class GpuDrmBackend
         struct DRMCard
         {
             QString ID;
+            QString Name;
             QString Vendor;
             QString DriverName;
             QString DriverVersion;
@@ -54,6 +57,8 @@ class GpuDrmBackend
             QString GttTotalPath;
             QString GttUsedPath;
             QString TempPath;
+            QString ActFreqPath;
+            QString CurFreqPath;
             QString RenderNodePath;
             QString CardNodePath;
             QVector<QPair<QString, QString>> EngineBusyPaths;

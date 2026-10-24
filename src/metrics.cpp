@@ -34,6 +34,18 @@ GPU *Metrics::GetGPU()
     return &instance;
 }
 
+NPU *Metrics::GetNPU()
+{
+    static NPU instance;
+    return &instance;
+}
+
+Battery *Metrics::GetBattery()
+{
+    static Battery instance;
+    return &instance;
+}
+
 Network *Metrics::GetNetwork()
 {
     static Network instance;
@@ -145,6 +157,10 @@ bool Metrics::sampleNow()
         Metrics::GetNetwork()->Sample();
     if (this->m_gpuSamplingEnabled)
         Metrics::GetGPU()->Sample();
+    if (this->m_npuSamplingEnabled)
+        Metrics::GetNPU()->Sample();
+    if (this->m_batterySamplingEnabled)
+        Metrics::GetBattery()->Sample();
     if (this->m_processStatsEnabled)
         Metrics::GetKernel()->Sample();
 

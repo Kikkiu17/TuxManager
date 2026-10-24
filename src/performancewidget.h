@@ -25,6 +25,8 @@
 #include "perf/diskdetailwidget.h"
 #include "perf/networkdetailwidget.h"
 #include "perf/gpudetailwidget.h"
+#include "perf/npudetailwidget.h"
+#include "perf/batterydetailwidget.h"
 #include "perf/swapdetailwidget.h"
 
 #include <QHash>
@@ -92,6 +94,12 @@ class PerformanceWidget : public QWidget
         QVector<Perf::SidePanelItem *>   m_gpuItems;
         QVector<Perf::GpuDetailWidget *> m_gpuDetails;
         QVector<QString>                 m_gpuNames;
+        QVector<Perf::SidePanelItem *>   m_npuItems;
+        QVector<Perf::NpuDetailWidget *> m_npuDetails;
+        QVector<QString>                 m_npuNames;
+        QVector<Perf::SidePanelItem *>   m_batteryItems;
+        QVector<Perf::BatteryDetailWidget *> m_batteryDetails;
+        QVector<QString>                 m_batteryNames;
         bool                             m_active { false };
 
         void setupLayout();
@@ -99,6 +107,8 @@ class PerformanceWidget : public QWidget
         void setupDiskPanels();
         void setupNetworkPanels();
         void setupGpuPanels();
+        void setupNpuPanels();
+        void setupBatteryPanels();
         void applySidePanelOrder();
         void tagTimeAxisLabels();
         void applySidePanelGridEnabled();

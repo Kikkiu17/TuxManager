@@ -61,6 +61,12 @@ class ColorScheme
         QColor GpuGraphLineColor;
         QColor GpuGraphFillColor;
         QColor GpuGraphSecondaryFillColor;
+        QColor NpuGraphLineColor;
+        QColor NpuGraphFillColor;
+        QColor NpuGraphSecondaryFillColor;
+        QColor BatteryGraphLineColor;
+        QColor BatteryGraphFillColor;
+        QColor BatteryGraphSecondaryFillColor;
         QColor SwapUsageGraphLineColor;
         QColor SwapUsageGraphFillColor;
         QColor SwapActivityGraphLineColor;
@@ -84,6 +90,8 @@ class ColorScheme
         QColor DiskHeaderValueColor;
         QColor NetworkTitleColor;
         QColor GpuTitleColor;
+        QColor NpuTitleColor;
+        QColor BatteryTitleColor;
         QColor MutedTextColor;
         QColor StatLabelColor;
         QColor AxisLabelColor;

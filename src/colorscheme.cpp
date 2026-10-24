@@ -44,6 +44,12 @@ namespace
         { "GpuGraphLineColor", &ColorScheme::GpuGraphLineColor },
         { "GpuGraphFillColor", &ColorScheme::GpuGraphFillColor },
         { "GpuGraphSecondaryFillColor", &ColorScheme::GpuGraphSecondaryFillColor },
+        { "NpuGraphLineColor", &ColorScheme::NpuGraphLineColor },
+        { "NpuGraphFillColor", &ColorScheme::NpuGraphFillColor },
+        { "NpuGraphSecondaryFillColor", &ColorScheme::NpuGraphSecondaryFillColor },
+        { "BatteryGraphLineColor", &ColorScheme::BatteryGraphLineColor },
+        { "BatteryGraphFillColor", &ColorScheme::BatteryGraphFillColor },
+        { "BatteryGraphSecondaryFillColor", &ColorScheme::BatteryGraphSecondaryFillColor },
         { "SwapUsageGraphLineColor", &ColorScheme::SwapUsageGraphLineColor },
         { "SwapUsageGraphFillColor", &ColorScheme::SwapUsageGraphFillColor },
         { "SwapActivityGraphLineColor", &ColorScheme::SwapActivityGraphLineColor },
@@ -67,6 +73,8 @@ namespace
         { "DiskHeaderValueColor", &ColorScheme::DiskHeaderValueColor },
         { "NetworkTitleColor", &ColorScheme::NetworkTitleColor },
         { "GpuTitleColor", &ColorScheme::GpuTitleColor },
+        { "NpuTitleColor", &ColorScheme::NpuTitleColor },
+        { "BatteryTitleColor", &ColorScheme::BatteryTitleColor },
         { "MutedTextColor", &ColorScheme::MutedTextColor },
         { "StatLabelColor", &ColorScheme::StatLabelColor },
         { "AxisLabelColor", &ColorScheme::AxisLabelColor },
@@ -159,6 +167,12 @@ ColorScheme ColorScheme::DefaultDark()
     scheme.GpuGraphLineColor = QColor(0x44, 0xa8, 0xff);               // light blue
     scheme.GpuGraphFillColor = QColor(0x1e, 0x4d, 0x82, 110);          // dark blue, semi-transparent
     scheme.GpuGraphSecondaryFillColor = QColor(0x14, 0x33, 0x58, 130); // very dark blue, semi-transparent
+    scheme.NpuGraphLineColor = QColor(0x00, 0xd4, 0xaa);               // bright teal
+    scheme.NpuGraphFillColor = QColor(0x00, 0x66, 0x55, 120);          // dark teal, semi-transparent
+    scheme.NpuGraphSecondaryFillColor = QColor(0x00, 0x44, 0x38, 140); // very dark teal, semi-transparent
+    scheme.BatteryGraphLineColor = QColor(0x10, 0xb9, 0x81);           // emerald green
+    scheme.BatteryGraphFillColor = QColor(0x06, 0x5f, 0x46, 120);      // dark emerald, semi-transparent
+    scheme.BatteryGraphSecondaryFillColor = QColor(0x04, 0x47, 0x34, 140); // very dark emerald, semi-transparent
     scheme.SwapUsageGraphLineColor = QColor(0xcc, 0x88, 0x44);         // amber
     scheme.SwapUsageGraphFillColor = QColor(0x66, 0x33, 0x11, 120);    // dark brown, semi-transparent
     scheme.SwapActivityGraphLineColor = QColor(0xcc, 0xaa, 0x66);      // tan/gold
@@ -182,6 +196,8 @@ ColorScheme ColorScheme::DefaultDark()
     scheme.DiskHeaderValueColor = QColor(0xaa, 0xdd, 0xaa);             // pale green
     scheme.NetworkTitleColor = scheme.NetworkGraphLineColor;
     scheme.GpuTitleColor = scheme.GpuGraphLineColor;
+    scheme.NpuTitleColor = scheme.NpuGraphLineColor;
+    scheme.BatteryTitleColor = scheme.BatteryGraphLineColor;
     scheme.MutedTextColor = QColor(0xaa, 0xaa, 0xaa);                   // medium grey
     scheme.StatLabelColor = QColor(0x88, 0x88, 0x88);                   // grey
     scheme.AxisLabelColor = QColor(0x66, 0x66, 0x66);                   // dark grey
@@ -221,6 +237,12 @@ ColorScheme ColorScheme::DefaultLight()
     scheme.GpuGraphLineColor = QColor(0x2e, 0x87, 0xd1);               // medium blue
     scheme.GpuGraphFillColor = QColor(0xb6, 0xd6, 0xf3, 115);          // pale blue, semi-transparent
     scheme.GpuGraphSecondaryFillColor = QColor(0x8b, 0xbf, 0xe9, 125); // light blue, semi-transparent
+    scheme.NpuGraphLineColor = QColor(0x00, 0x8a, 0x76);               // teal green
+    scheme.NpuGraphFillColor = QColor(0xa0, 0xe0, 0xd4, 120);          // pale teal, semi-transparent
+    scheme.NpuGraphSecondaryFillColor = QColor(0x75, 0xc7, 0xb8, 130); // light teal, semi-transparent
+    scheme.BatteryGraphLineColor = QColor(0x05, 0x96, 0x69);           // emerald green
+    scheme.BatteryGraphFillColor = QColor(0xa7, 0xf3, 0xd0, 120);      // pale emerald, semi-transparent
+    scheme.BatteryGraphSecondaryFillColor = QColor(0x6e, 0xe7, 0xb7, 130); // light emerald, semi-transparent
     scheme.SwapUsageGraphLineColor = QColor(0xb4, 0x76, 0x35);         // medium brown
     scheme.SwapUsageGraphFillColor = QColor(0xe7, 0xc9, 0xaa, 120);    // pale tan, semi-transparent
     scheme.SwapActivityGraphLineColor = QColor(0xb3, 0x8d, 0x4b);      // golden tan
@@ -244,6 +266,8 @@ ColorScheme ColorScheme::DefaultLight()
     scheme.DiskHeaderValueColor = QColor(0x74, 0xa5, 0x5d);             // medium green
     scheme.NetworkTitleColor = scheme.NetworkGraphLineColor;
     scheme.GpuTitleColor = scheme.GpuGraphLineColor;
+    scheme.NpuTitleColor = scheme.NpuGraphLineColor;
+    scheme.BatteryTitleColor = scheme.BatteryGraphLineColor;
     scheme.MutedTextColor = QColor(0x77, 0x77, 0x77);                   // medium grey
     scheme.StatLabelColor = QColor(0x7a, 0x7a, 0x7a);                   // medium grey
     scheme.AxisLabelColor = QColor(0x6d, 0x6d, 0x6d);                   // dark grey

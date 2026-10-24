@@ -33,7 +33,9 @@ namespace Perf
         Swap,
         Disks,
         Network,
-        Gpu
+        Gpu,
+        Npu,
+        Battery
     };
 
     QString SidePanelGroupId(SidePanelGroup group);
