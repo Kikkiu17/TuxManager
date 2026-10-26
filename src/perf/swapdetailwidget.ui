@@ -203,81 +203,95 @@
      </item>
     </layout>
    </item>
-   <item>
+      <item>
     <layout class="QGridLayout" name="statsGrid">
-     <property name="horizontalSpacing">
-      <number>24</number>
-     </property>
-     <property name="verticalSpacing">
-      <number>8</number>
-     </property>
+     <property name="horizontalSpacing"><number>28</number></property>
+     <property name="verticalSpacing"><number>12</number></property>
+
+     <!-- Column 0 -->
      <item row="0" column="0">
-      <widget class="QLabel" name="inUseLabel">
-       <property name="text">
-        <string>In use</string>
-       </property>
-      </widget>
-     </item>
-     <item row="0" column="1">
-      <widget class="QLabel" name="inUseValueLabel">
-       <property name="text">
-        <string>0 GB</string>
-       </property>
-      </widget>
-     </item>
-     <item row="0" column="2">
-      <widget class="QLabel" name="freeLabel">
-       <property name="text">
-        <string>Free</string>
-       </property>
-      </widget>
-     </item>
-     <item row="0" column="3">
-      <widget class="QLabel" name="freeValueLabel">
-       <property name="text">
-        <string>0 GB</string>
-       </property>
-      </widget>
+      <layout class="QVBoxLayout" name="inUseLayout">
+       <property name="spacing"><number>2</number></property>
+       <item>
+        <widget class="QLabel" name="inUseLabel">
+         <property name="styleSheet"><string>font-size: 10pt;</string></property>
+         <property name="text"><string>In use</string></property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="inUseValueLabel">
+         <property name="styleSheet"><string>font-size: 14pt;</string></property>
+         <property name="text"><string>0 GB</string></property>
+        </widget>
+       </item>
+      </layout>
      </item>
      <item row="1" column="0">
-      <widget class="QLabel" name="swapInLabel">
-       <property name="toolTip">
-        <string>Swap in direction: disk -&gt; RAM</string>
-       </property>
-       <property name="text">
-        <string>Swap in</string>
-       </property>
-      </widget>
+      <layout class="QVBoxLayout" name="swapInLayout">
+       <property name="spacing"><number>2</number></property>
+       <item>
+        <widget class="QLabel" name="swapInLabel">
+         <property name="styleSheet"><string>font-size: 10pt;</string></property>
+         <property name="toolTip"><string>Swap in direction: disk -&gt; RAM</string></property>
+         <property name="text"><string>Swap in</string></property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="inRateValueLabel">
+         <property name="styleSheet"><string>font-size: 14pt;</string></property>
+         <property name="toolTip"><string>Swap in direction: disk -&gt; RAM</string></property>
+         <property name="text"><string>0 KB/s</string></property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+
+     <!-- Column 1 -->
+     <item row="0" column="1">
+      <layout class="QVBoxLayout" name="freeLayout">
+       <property name="spacing"><number>2</number></property>
+       <item>
+        <widget class="QLabel" name="freeLabel">
+         <property name="styleSheet"><string>font-size: 10pt;</string></property>
+         <property name="text"><string>Free</string></property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="freeValueLabel">
+         <property name="styleSheet"><string>font-size: 14pt;</string></property>
+         <property name="text"><string>0 GB</string></property>
+        </widget>
+       </item>
+      </layout>
      </item>
      <item row="1" column="1">
-      <widget class="QLabel" name="inRateValueLabel">
-       <property name="toolTip">
-        <string>Swap in direction: disk -&gt; RAM</string>
-       </property>
-       <property name="text">
-        <string>0 KB/s</string>
-       </property>
-      </widget>
+      <layout class="QVBoxLayout" name="swapOutLayout">
+       <property name="spacing"><number>2</number></property>
+       <item>
+        <widget class="QLabel" name="swapOutLabel">
+         <property name="styleSheet"><string>font-size: 10pt;</string></property>
+         <property name="toolTip"><string>Swap out direction: RAM -&gt; disk</string></property>
+         <property name="text"><string>Swap out</string></property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="outRateValueLabel">
+         <property name="styleSheet"><string>font-size: 14pt;</string></property>
+         <property name="toolTip"><string>Swap out direction: RAM -&gt; disk</string></property>
+         <property name="text"><string>0 KB/s</string></property>
+        </widget>
+       </item>
+      </layout>
      </item>
-     <item row="1" column="2">
-      <widget class="QLabel" name="swapOutLabel">
-       <property name="toolTip">
-        <string>Swap out direction: RAM -&gt; disk</string>
+
+     <!-- Spacer Column 2 -->
+     <item row="0" column="2">
+      <spacer name="statsGridSpacer">
+       <property name="orientation"><enum>Qt::Horizontal</enum></property>
+       <property name="sizeHint" stdset="0">
+        <size><width>40</width><height>20</height></size>
        </property>
-       <property name="text">
-        <string>Swap out</string>
-       </property>
-      </widget>
-     </item>
-     <item row="1" column="3">
-      <widget class="QLabel" name="outRateValueLabel">
-       <property name="toolTip">
-        <string>Swap out direction: RAM -&gt; disk</string>
-       </property>
-       <property name="text">
-        <string>0 KB/s</string>
-       </property>
-      </widget>
+      </spacer>
      </item>
     </layout>
    </item>

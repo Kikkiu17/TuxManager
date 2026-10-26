@@ -163,38 +163,213 @@
     </layout>
    </item>
 
-   <item>
+      <item>
     <layout class="QGridLayout" name="statsGrid">
-     <property name="horizontalSpacing"><number>24</number></property>
-     <property name="verticalSpacing"><number>8</number></property>
+     <property name="horizontalSpacing"><number>28</number></property>
+     <property name="verticalSpacing"><number>12</number></property>
 
-     <item row="0" column="0"><widget class="QLabel" name="statStatusLabel"><property name="text"><string>Status</string></property></widget></item>
-     <item row="0" column="1"><widget class="QLabel" name="statStatusValue"><property name="text"><string>—</string></property></widget></item>
-     <item row="0" column="2"><widget class="QLabel" name="statEnergyFullLabel"><property name="text"><string>Full capacity</string></property></widget></item>
-     <item row="0" column="3"><widget class="QLabel" name="statEnergyFullValue"><property name="text"><string>—</string></property></widget></item>
+     <!-- Column 0 -->
+     <item row="0" column="0">
+      <layout class="QVBoxLayout" name="statusLayout">
+       <property name="spacing"><number>2</number></property>
+       <item>
+        <widget class="QLabel" name="statStatusLabel">
+         <property name="styleSheet"><string>font-size: 10pt;</string></property>
+         <property name="text"><string>Status</string></property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="statStatusValue">
+         <property name="styleSheet"><string>font-size: 14pt;</string></property>
+         <property name="text"><string>—</string></property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+     <item row="1" column="0">
+      <layout class="QVBoxLayout" name="powerDrawLayout">
+       <property name="spacing"><number>2</number></property>
+       <item>
+        <widget class="QLabel" name="statPowerDrawLabel">
+         <property name="styleSheet"><string>font-size: 10pt;</string></property>
+         <property name="text"><string>Battery power</string></property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="statPowerDrawValue">
+         <property name="styleSheet"><string>font-size: 14pt;</string></property>
+         <property name="text"><string>—</string></property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+     <item row="2" column="0">
+      <layout class="QVBoxLayout" name="voltageLayout">
+       <property name="spacing"><number>2</number></property>
+       <item>
+        <widget class="QLabel" name="statVoltageLabel">
+         <property name="styleSheet"><string>font-size: 10pt;</string></property>
+         <property name="text"><string>Voltage</string></property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="statVoltageValue">
+         <property name="styleSheet"><string>font-size: 14pt;</string></property>
+         <property name="text"><string>—</string></property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+     <item row="3" column="0">
+      <layout class="QVBoxLayout" name="timeRemainingLayout">
+       <property name="spacing"><number>2</number></property>
+       <item>
+        <widget class="QLabel" name="statTimeRemainingLabel">
+         <property name="styleSheet"><string>font-size: 10pt;</string></property>
+         <property name="text"><string>Estimated time</string></property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="statTimeRemainingValue">
+         <property name="styleSheet"><string>font-size: 14pt;</string></property>
+         <property name="text"><string>—</string></property>
+        </widget>
+       </item>
+      </layout>
+     </item>
 
-     <item row="1" column="0"><widget class="QLabel" name="statPowerDrawLabel"><property name="text"><string>Battery power</string></property></widget></item>
-     <item row="1" column="1"><widget class="QLabel" name="statPowerDrawValue"><property name="text"><string>—</string></property></widget></item>
-     <item row="1" column="2"><widget class="QLabel" name="statTotalPowerLabel"><property name="text"><string>Total power</string></property></widget></item>
-     <item row="1" column="3"><widget class="QLabel" name="statTotalPowerValue"><property name="text"><string>—</string></property></widget></item>
+     <!-- Column 1 -->
+     <item row="0" column="1">
+      <layout class="QVBoxLayout" name="energyNowLayout">
+       <property name="spacing"><number>2</number></property>
+       <item>
+        <widget class="QLabel" name="statEnergyNowLabel">
+         <property name="styleSheet"><string>font-size: 10pt;</string></property>
+         <property name="text"><string>Remaining energy</string></property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="statEnergyNowValue">
+         <property name="styleSheet"><string>font-size: 14pt;</string></property>
+         <property name="text"><string>—</string></property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+     <item row="1" column="1">
+      <layout class="QVBoxLayout" name="energyFullLayout">
+       <property name="spacing"><number>2</number></property>
+       <item>
+        <widget class="QLabel" name="statEnergyFullLabel">
+         <property name="styleSheet"><string>font-size: 10pt;</string></property>
+         <property name="text"><string>Full capacity</string></property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="statEnergyFullValue">
+         <property name="styleSheet"><string>font-size: 14pt;</string></property>
+         <property name="text"><string>—</string></property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+     <item row="2" column="1">
+      <layout class="QVBoxLayout" name="totalPowerLayout">
+       <property name="spacing"><number>2</number></property>
+       <item>
+        <widget class="QLabel" name="statTotalPowerLabel">
+         <property name="styleSheet"><string>font-size: 10pt;</string></property>
+         <property name="text"><string>Total power</string></property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="statTotalPowerValue">
+         <property name="styleSheet"><string>font-size: 14pt;</string></property>
+         <property name="text"><string>—</string></property>
+        </widget>
+       </item>
+      </layout>
+     </item>
 
-     <item row="2" column="0"><widget class="QLabel" name="statVoltageLabel"><property name="text"><string>Voltage</string></property></widget></item>
-     <item row="2" column="1"><widget class="QLabel" name="statVoltageValue"><property name="text"><string>—</string></property></widget></item>
-     <item row="2" column="2"><widget class="QLabel" name="statEnergyNowLabel"><property name="text"><string>Remaining energy</string></property></widget></item>
-     <item row="2" column="3"><widget class="QLabel" name="statEnergyNowValue"><property name="text"><string>—</string></property></widget></item>
+     <!-- Column 2 -->
+     <item row="0" column="2">
+      <layout class="QVBoxLayout" name="healthLayout">
+       <property name="spacing"><number>2</number></property>
+       <item>
+        <widget class="QLabel" name="statHealthLabel">
+         <property name="styleSheet"><string>font-size: 10pt;</string></property>
+         <property name="text"><string>Battery health</string></property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="statHealthValue">
+         <property name="styleSheet"><string>font-size: 14pt;</string></property>
+         <property name="text"><string>—</string></property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+     <item row="1" column="2">
+      <layout class="QVBoxLayout" name="techLayout">
+       <property name="spacing"><number>2</number></property>
+       <item>
+        <widget class="QLabel" name="statTechLabel">
+         <property name="styleSheet"><string>font-size: 10pt;</string></property>
+         <property name="text"><string>Technology</string></property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="statTechValue">
+         <property name="styleSheet"><string>font-size: 14pt;</string></property>
+         <property name="text"><string>—</string></property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+     <item row="2" column="2">
+      <layout class="QVBoxLayout" name="cycleCountLayout">
+       <property name="spacing"><number>2</number></property>
+       <item>
+        <widget class="QLabel" name="statCycleCountLabel">
+         <property name="styleSheet"><string>font-size: 10pt;</string></property>
+         <property name="text"><string>Cycle count</string></property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="statCycleCountValue">
+         <property name="styleSheet"><string>font-size: 14pt;</string></property>
+         <property name="text"><string>—</string></property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+     <item row="3" column="2">
+      <layout class="QVBoxLayout" name="deviceLayout">
+       <property name="spacing"><number>2</number></property>
+       <item>
+        <widget class="QLabel" name="statDeviceLabel">
+         <property name="styleSheet"><string>font-size: 10pt;</string></property>
+         <property name="text"><string>Device</string></property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="statDeviceValue">
+         <property name="styleSheet"><string>font-size: 14pt;</string></property>
+         <property name="text"><string>—</string></property>
+        </widget>
+       </item>
+      </layout>
+     </item>
 
-     <item row="3" column="0"><widget class="QLabel" name="statTimeRemainingLabel"><property name="text"><string>Estimated time</string></property></widget></item>
-     <item row="3" column="1"><widget class="QLabel" name="statTimeRemainingValue"><property name="text"><string>—</string></property></widget></item>
-     <item row="3" column="2"><widget class="QLabel" name="statHealthLabel"><property name="text"><string>Battery health</string></property></widget></item>
-     <item row="3" column="3"><widget class="QLabel" name="statHealthValue"><property name="text"><string>—</string></property></widget></item>
-
-     <item row="4" column="0"><widget class="QLabel" name="statTechLabel"><property name="text"><string>Technology</string></property></widget></item>
-     <item row="4" column="1"><widget class="QLabel" name="statTechValue"><property name="text"><string>—</string></property></widget></item>
-     <item row="4" column="2"><widget class="QLabel" name="statCycleCountLabel"><property name="text"><string>Cycle count</string></property></widget></item>
-     <item row="4" column="3"><widget class="QLabel" name="statCycleCountValue"><property name="text"><string>—</string></property></widget></item>
-
-     <item row="5" column="0"><widget class="QLabel" name="statDeviceLabel"><property name="text"><string>Device</string></property></widget></item>
-     <item row="5" column="1"><widget class="QLabel" name="statDeviceValue"><property name="text"><string>—</string></property></widget></item>
+     <!-- Spacer Column 3 -->
+     <item row="0" column="3">
+      <spacer name="statsGridSpacer">
+       <property name="orientation"><enum>Qt::Horizontal</enum></property>
+       <property name="sizeHint" stdset="0">
+        <size><width>40</width><height>20</height></size>
+       </property>
+      </spacer>
+     </item>
     </layout>
    </item>
 

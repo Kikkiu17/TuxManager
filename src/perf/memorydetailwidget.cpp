@@ -53,19 +53,26 @@ MemoryDetailWidget::MemoryDetailWidget(QWidget *parent) : QWidget(parent), ui(ne
 
     if (QGridLayout *statsGrid = this->findChild<QGridLayout *>("statsGrid"))
     {
-        for (int row = 0; row < statsGrid->rowCount(); ++row)
+        for (int i = 0; i < statsGrid->count(); ++i)
         {
-            for (int column = 0; column < statsGrid->columnCount(); ++column)
+            if (QLayoutItem *item = statsGrid->itemAt(i))
             {
-                if (QLayoutItem *item = statsGrid->itemAtPosition(row, column))
+                if (QLayout *vbox = item->layout())
                 {
-                    if (QLabel *label = qobject_cast<QLabel *>(item->widget()))
+                    if (vbox->count() >= 1)
                     {
-                        if (column % 2 == 0)
+                        if (QLabel *label = qobject_cast<QLabel *>(vbox->itemAt(0)->widget()))
                             WidgetStyle::ApplyTextStyle(label, scheme->StatLabelColor, 10);
-                        else
-                            WidgetStyle::ApplyTextStyle(label, scheme->DarkMode ? QColor(0xee, 0xee, 0xee) : QColor(0x22, 0x22, 0x22), 11);
                     }
+                    if (vbox->count() >= 2)
+                    {
+                        if (QLabel *valLabel = qobject_cast<QLabel *>(vbox->itemAt(1)->widget()))
+                            WidgetStyle::ApplyTextStyle(valLabel, scheme->DarkMode ? QColor(0xee, 0xee, 0xee) : QColor(0x22, 0x22, 0x22), 14);
+                    }
+                }
+                else if (QLabel *label = qobject_cast<QLabel *>(item->widget()))
+                {
+                    WidgetStyle::ApplyTextStyle(label, scheme->StatLabelColor, 10);
                 }
             }
         }
@@ -118,19 +125,26 @@ void MemoryDetailWidget::ApplyColorScheme()
 
     if (QGridLayout *statsGrid = this->findChild<QGridLayout *>("statsGrid"))
     {
-        for (int row = 0; row < statsGrid->rowCount(); ++row)
+        for (int i = 0; i < statsGrid->count(); ++i)
         {
-            for (int column = 0; column < statsGrid->columnCount(); ++column)
+            if (QLayoutItem *item = statsGrid->itemAt(i))
             {
-                if (QLayoutItem *item = statsGrid->itemAtPosition(row, column))
+                if (QLayout *vbox = item->layout())
                 {
-                    if (QLabel *label = qobject_cast<QLabel *>(item->widget()))
+                    if (vbox->count() >= 1)
                     {
-                        if (column % 2 == 0)
+                        if (QLabel *label = qobject_cast<QLabel *>(vbox->itemAt(0)->widget()))
                             WidgetStyle::ApplyTextStyle(label, scheme->StatLabelColor, 10);
-                        else
-                            WidgetStyle::ApplyTextStyle(label, scheme->DarkMode ? QColor(0xee, 0xee, 0xee) : QColor(0x22, 0x22, 0x22), 11);
                     }
+                    if (vbox->count() >= 2)
+                    {
+                        if (QLabel *valLabel = qobject_cast<QLabel *>(vbox->itemAt(1)->widget()))
+                            WidgetStyle::ApplyTextStyle(valLabel, scheme->DarkMode ? QColor(0xee, 0xee, 0xee) : QColor(0x22, 0x22, 0x22), 14);
+                    }
+                }
+                else if (QLabel *label = qobject_cast<QLabel *>(item->widget()))
+                {
+                    WidgetStyle::ApplyTextStyle(label, scheme->StatLabelColor, 10);
                 }
             }
         }
@@ -241,8 +255,25 @@ void MemoryDetailWidget::SetCompactMode(bool compact)
     {
         for (int i = 0; i < statsGrid->count(); ++i)
         {
-            if (QWidget *w = statsGrid->itemAt(i)->widget())
-                w->setVisible(!compact);
+            if (QLayoutItem *item = statsGrid->itemAt(i))
+            {
+                if (QWidget *w = item->widget())
+                    w->setVisible(!compact);
+                else if (QLayout *l = item->layout())
+                {
+                    for (int j = 0; j < l->count(); ++j)
+                    {
+                        if (QWidget *w = l->itemAt(j)->widget())
+                            w->setVisible(!compact);
+                    }
+                }
+            }
         }
+    }
+
+    if (!compact && !Metrics::GetMemory()->HasCompressedMemory())
+    {
+        this->ui->compressedLabel->setVisible(false);
+        this->ui->statCompressedValue->setVisible(false);
     }
 }
