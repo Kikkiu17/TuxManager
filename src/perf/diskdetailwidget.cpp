@@ -39,7 +39,7 @@ DiskDetailWidget::DiskDetailWidget(QWidget *parent) : QWidget(parent), ui(new Ui
     connect(this->ui->smartButton, &QPushButton::clicked, this, &DiskDetailWidget::onSmartButtonClicked);
     const ColorScheme *scheme = ColorScheme::GetCurrent();
 
-    WidgetStyle::ApplyTextStyle(this->ui->titleLabel, scheme->DiskTitleColor, 18, true);
+    WidgetStyle::ApplyTextStyle(this->ui->titleLabel, scheme->DiskTitleColor, 20, false);
     WidgetStyle::ApplyTextStyle(this->ui->modelLabel, scheme->DiskHeaderValueColor, 12);
     WidgetStyle::ApplyTextStyle(this->ui->activeGraphLabel, scheme->StatLabelColor, 8);
     WidgetStyle::ApplyTextStyle(this->ui->activeGraphMaxLabel, scheme->StatLabelColor, 8);
@@ -50,32 +50,9 @@ DiskDetailWidget::DiskDetailWidget(QWidget *parent) : QWidget(parent), ui(new Ui
     WidgetStyle::ApplyTextStyle(this->ui->transferTimeLeftLabel, scheme->AxisLabelColor, 8);
     WidgetStyle::ApplyTextStyle(this->ui->transferTimeRightLabel, scheme->AxisLabelColor, 8);
 
-    if (QGridLayout *statsGrid = this->findChild<QGridLayout *>("statsGrid"))
-    {
-        for (int i = 0; i < statsGrid->count(); ++i)
-        {
-            if (QLayoutItem *item = statsGrid->itemAt(i))
-            {
-                if (QLayout *vbox = item->layout())
-                {
-                    if (vbox->count() >= 1)
-                    {
-                        if (QLabel *label = qobject_cast<QLabel *>(vbox->itemAt(0)->widget()))
-                            WidgetStyle::ApplyTextStyle(label, scheme->StatLabelColor, 10);
-                    }
-                    if (vbox->count() >= 2)
-                    {
-                        if (QLabel *valLabel = qobject_cast<QLabel *>(vbox->itemAt(1)->widget()))
-                            WidgetStyle::ApplyTextStyle(valLabel, scheme->DarkMode ? QColor(0xee, 0xee, 0xee) : QColor(0x22, 0x22, 0x22), 14);
-                    }
-                }
-                else if (QLabel *label = qobject_cast<QLabel *>(item->widget()))
-                {
-                    WidgetStyle::ApplyTextStyle(label, scheme->StatLabelColor, 10);
-                }
-            }
-        }
-    }
+    WidgetStyle::ApplyAccentBarStyle(this->ui->readAccentBar, scheme->DiskTransferGraphLineColor, false);
+    WidgetStyle::ApplyAccentBarStyle(this->ui->writeAccentBar, scheme->DiskTransferGraphLineColor.lighter(115), true);
+    WidgetStyle::ApplyStatsGridStyle(this, scheme);
 
     // Active time graph
     this->ui->activeGraphWidget->SetColor(scheme->DiskGraphLineColor, scheme->DiskGraphFillColor);
@@ -116,7 +93,7 @@ DiskDetailWidget::~DiskDetailWidget()
 void DiskDetailWidget::ApplyColorScheme()
 {
     const ColorScheme *scheme = ColorScheme::GetCurrent();
-    WidgetStyle::ApplyTextStyle(this->ui->titleLabel, scheme->DiskTitleColor, 18, true);
+    WidgetStyle::ApplyTextStyle(this->ui->titleLabel, scheme->DiskTitleColor, 20, false);
     WidgetStyle::ApplyTextStyle(this->ui->modelLabel, scheme->DiskHeaderValueColor, 12);
     WidgetStyle::ApplyTextStyle(this->ui->activeGraphLabel, scheme->StatLabelColor, 8);
     WidgetStyle::ApplyTextStyle(this->ui->activeGraphMaxLabel, scheme->StatLabelColor, 8);
@@ -127,32 +104,9 @@ void DiskDetailWidget::ApplyColorScheme()
     WidgetStyle::ApplyTextStyle(this->ui->transferTimeLeftLabel, scheme->AxisLabelColor, 8);
     WidgetStyle::ApplyTextStyle(this->ui->transferTimeRightLabel, scheme->AxisLabelColor, 8);
 
-    if (QGridLayout *statsGrid = this->findChild<QGridLayout *>("statsGrid"))
-    {
-        for (int i = 0; i < statsGrid->count(); ++i)
-        {
-            if (QLayoutItem *item = statsGrid->itemAt(i))
-            {
-                if (QLayout *vbox = item->layout())
-                {
-                    if (vbox->count() >= 1)
-                    {
-                        if (QLabel *label = qobject_cast<QLabel *>(vbox->itemAt(0)->widget()))
-                            WidgetStyle::ApplyTextStyle(label, scheme->StatLabelColor, 10);
-                    }
-                    if (vbox->count() >= 2)
-                    {
-                        if (QLabel *valLabel = qobject_cast<QLabel *>(vbox->itemAt(1)->widget()))
-                            WidgetStyle::ApplyTextStyle(valLabel, scheme->DarkMode ? QColor(0xee, 0xee, 0xee) : QColor(0x22, 0x22, 0x22), 14);
-                    }
-                }
-                else if (QLabel *label = qobject_cast<QLabel *>(item->widget()))
-                {
-                    WidgetStyle::ApplyTextStyle(label, scheme->StatLabelColor, 10);
-                }
-            }
-        }
-    }
+    WidgetStyle::ApplyAccentBarStyle(this->ui->readAccentBar, scheme->DiskTransferGraphLineColor, false);
+    WidgetStyle::ApplyAccentBarStyle(this->ui->writeAccentBar, scheme->DiskTransferGraphLineColor.lighter(115), true);
+    WidgetStyle::ApplyStatsGridStyle(this, scheme);
 
     this->ui->activeGraphWidget->SetColor(scheme->DiskGraphLineColor, scheme->DiskGraphFillColor);
     this->ui->transferGraphWidget->SetColor(scheme->DiskTransferGraphLineColor, scheme->DiskTransferGraphFillColor, scheme->DiskTransferGraphSecondaryFillColor);
@@ -216,24 +170,7 @@ void DiskDetailWidget::onUpdated()
 void DiskDetailWidget::SetCompactMode(bool compact)
 {
     if (QGridLayout *statsGrid = this->findChild<QGridLayout *>("statsGrid"))
-    {
-        for (int i = 0; i < statsGrid->count(); ++i)
-        {
-            if (QLayoutItem *item = statsGrid->itemAt(i))
-            {
-                if (QWidget *w = item->widget())
-                    w->setVisible(!compact);
-                else if (QLayout *l = item->layout())
-                {
-                    for (int j = 0; j < l->count(); ++j)
-                    {
-                        if (QWidget *w = l->itemAt(j)->widget())
-                            w->setVisible(!compact);
-                    }
-                }
-            }
-        }
-    }
+        WidgetStyle::SetLayoutWidgetsVisible(statsGrid, !compact);
 }
 
 void DiskDetailWidget::onSmartButtonClicked()

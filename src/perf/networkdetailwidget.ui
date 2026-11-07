@@ -31,7 +31,7 @@
      <item>
       <widget class="QLabel" name="titleLabel">
        <property name="styleSheet">
-        <string>font-size: 18pt; font-weight: bold;</string>
+        <string>font-size: 20pt;</string>
        </property>
        <property name="text">
         <string>Ethernet</string>
@@ -50,6 +50,19 @@
         </size>
        </property>
       </spacer>
+     </item>
+     <item>
+      <widget class="QLabel" name="headerAdapterLabel">
+       <property name="styleSheet">
+        <string>font-size: 12pt;</string>
+       </property>
+       <property name="text">
+        <string></string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignmentFlag::AlignRight|Qt::AlignmentFlag::AlignTrailing|Qt::AlignmentFlag::AlignVCenter</set>
+       </property>
+      </widget>
      </item>
     </layout>
    </item>
@@ -145,141 +158,148 @@
    </item>
       <item>
     <layout class="QGridLayout" name="statsGrid">
-     <property name="horizontalSpacing"><number>28</number></property>
-     <property name="verticalSpacing"><number>12</number></property>
+     <property name="horizontalSpacing"><number>36</number></property>
+     <property name="verticalSpacing"><number>10</number></property>
 
-     <!-- Column 0 -->
+     <!-- Column 0: Send (top) and Receive (bottom) with Windows 11 vertical accent bars -->
      <item row="0" column="0">
-      <layout class="QVBoxLayout" name="sendLayout">
-       <property name="spacing"><number>2</number></property>
+      <layout class="QHBoxLayout" name="sendBoxLayout">
+       <property name="spacing"><number>6</number></property>
        <item>
-        <widget class="QLabel" name="sendLabel">
-         <property name="styleSheet"><string>font-size: 10pt;</string></property>
-         <property name="text"><string>Send</string></property>
+        <widget class="QFrame" name="sendAccentBar">
+         <property name="minimumSize"><size><width>4</width><height>0</height></size></property>
+         <property name="maximumSize"><size><width>4</width><height>16777215</height></size></property>
         </widget>
        </item>
        <item>
-        <widget class="QLabel" name="sendValueLabel">
-         <property name="styleSheet"><string>font-size: 14pt;</string></property>
-         <property name="text"><string>0 KB/s</string></property>
+        <layout class="QVBoxLayout" name="sendLayout">
+         <property name="spacing"><number>1</number></property>
+         <item>
+          <widget class="QLabel" name="sendLabel">
+           <property name="styleSheet"><string>font-size: 9pt;</string></property>
+           <property name="text"><string>Send</string></property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="sendValueLabel">
+           <property name="styleSheet"><string>font-size: 15pt;</string></property>
+           <property name="text"><string>0 KB/s</string></property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+      </layout>
+     </item>
+     <item row="1" column="0">
+      <layout class="QHBoxLayout" name="receiveBoxLayout">
+       <property name="spacing"><number>6</number></property>
+       <item>
+        <widget class="QFrame" name="receiveAccentBar">
+         <property name="minimumSize"><size><width>4</width><height>0</height></size></property>
+         <property name="maximumSize"><size><width>4</width><height>16777215</height></size></property>
         </widget>
+       </item>
+       <item>
+        <layout class="QVBoxLayout" name="receiveLayout">
+         <property name="spacing"><number>1</number></property>
+         <item>
+          <widget class="QLabel" name="receiveLabel">
+           <property name="styleSheet"><string>font-size: 9pt;</string></property>
+           <property name="text"><string>Receive</string></property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="receiveValueLabel">
+           <property name="styleSheet"><string>font-size: 15pt;</string></property>
+           <property name="text"><string>0 KB/s</string></property>
+          </widget>
+         </item>
+        </layout>
        </item>
       </layout>
      </item>
 
-     <!-- Column 1 -->
-     <item row="0" column="1">
-      <layout class="QVBoxLayout" name="receiveLayout">
-       <property name="spacing"><number>2</number></property>
-       <item>
-        <widget class="QLabel" name="receiveLabel">
-         <property name="styleSheet"><string>font-size: 10pt;</string></property>
-         <property name="text"><string>Receive</string></property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QLabel" name="receiveValueLabel">
-         <property name="styleSheet"><string>font-size: 14pt;</string></property>
-         <property name="text"><string>0 KB/s</string></property>
-        </widget>
-       </item>
-      </layout>
-     </item>
-
-     <!-- Column 2 -->
-     <item row="0" column="2">
-      <layout class="QVBoxLayout" name="adapterLayout">
-       <property name="spacing"><number>2</number></property>
-       <item>
+     <!-- Column 1: Right Key-Value Property Table (spanning rows 0..1) -->
+     <item row="0" column="1" rowspan="2">
+      <layout class="QGridLayout" name="rightStatsGrid">
+       <property name="horizontalSpacing"><number>14</number></property>
+       <property name="verticalSpacing"><number>4</number></property>
+       <item row="0" column="0">
         <widget class="QLabel" name="adapterLabel">
-         <property name="styleSheet"><string>font-size: 10pt;</string></property>
-         <property name="text"><string>Adapter</string></property>
+         <property name="styleSheet"><string>font-size: 9pt;</string></property>
+         <property name="text"><string>Adapter:</string></property>
         </widget>
        </item>
-       <item>
+       <item row="0" column="1">
         <widget class="QLabel" name="adapterValueLabel">
-         <property name="styleSheet"><string>font-size: 13pt;</string></property>
+         <property name="styleSheet"><string>font-size: 9pt;</string></property>
          <property name="text"><string>—</string></property>
         </widget>
        </item>
-      </layout>
-     </item>
-     <item row="1" column="2">
-      <layout class="QVBoxLayout" name="typeLayout">
-       <property name="spacing"><number>2</number></property>
-       <item>
+       <item row="1" column="0">
         <widget class="QLabel" name="typeLabel">
-         <property name="styleSheet"><string>font-size: 10pt;</string></property>
-         <property name="text"><string>Connection type</string></property>
+         <property name="styleSheet"><string>font-size: 9pt;</string></property>
+         <property name="text"><string>Connection type:</string></property>
         </widget>
        </item>
-       <item>
+       <item row="1" column="1">
         <widget class="QLabel" name="typeValueLabel">
-         <property name="styleSheet"><string>font-size: 13pt;</string></property>
+         <property name="styleSheet"><string>font-size: 9pt;</string></property>
          <property name="text"><string>—</string></property>
         </widget>
        </item>
-      </layout>
-     </item>
-     <item row="2" column="2">
-      <layout class="QVBoxLayout" name="speedLayout">
-       <property name="spacing"><number>2</number></property>
-       <item>
+       <item row="2" column="0">
         <widget class="QLabel" name="speedLabel">
-         <property name="styleSheet"><string>font-size: 10pt;</string></property>
-         <property name="text"><string>Link speed</string></property>
+         <property name="styleSheet"><string>font-size: 9pt;</string></property>
+         <property name="text"><string>Link speed:</string></property>
         </widget>
        </item>
-       <item>
+       <item row="2" column="1">
         <widget class="QLabel" name="speedValueLabel">
-         <property name="styleSheet"><string>font-size: 13pt;</string></property>
+         <property name="styleSheet"><string>font-size: 9pt;</string></property>
          <property name="text"><string>—</string></property>
         </widget>
        </item>
-      </layout>
-     </item>
-
-     <!-- Column 3 -->
-     <item row="0" column="3">
-      <layout class="QVBoxLayout" name="ipv4Layout">
-       <property name="spacing"><number>2</number></property>
-       <item>
+       <item row="3" column="0">
         <widget class="QLabel" name="ipv4Label">
-         <property name="styleSheet"><string>font-size: 10pt;</string></property>
-         <property name="text"><string>IPv4 address</string></property>
+         <property name="styleSheet"><string>font-size: 9pt;</string></property>
+         <property name="text"><string>IPv4 address:</string></property>
         </widget>
        </item>
-       <item>
+       <item row="3" column="1">
         <widget class="QLabel" name="ipv4ValueLabel">
-         <property name="styleSheet"><string>font-size: 13pt;</string></property>
+         <property name="styleSheet"><string>font-size: 9pt;</string></property>
          <property name="text"><string>—</string></property>
         </widget>
        </item>
-      </layout>
-     </item>
-     <item row="1" column="3">
-      <layout class="QVBoxLayout" name="ipv6Layout">
-       <property name="spacing"><number>2</number></property>
-       <item>
+       <item row="4" column="0">
         <widget class="QLabel" name="ipv6Label">
-         <property name="styleSheet"><string>font-size: 10pt;</string></property>
-         <property name="text"><string>IPv6 addresses</string></property>
+         <property name="styleSheet"><string>font-size: 9pt;</string></property>
+         <property name="text"><string>IPv6 addresses:</string></property>
          <property name="alignment"><set>Qt::AlignmentFlag::AlignLeading|Qt::AlignmentFlag::AlignLeft|Qt::AlignmentFlag::AlignTop</set></property>
         </widget>
        </item>
-       <item>
+       <item row="4" column="1">
         <widget class="QLabel" name="ipv6ValueLabel">
-         <property name="styleSheet"><string>font-size: 12pt;</string></property>
+         <property name="styleSheet"><string>font-size: 9pt;</string></property>
          <property name="text"><string>—</string></property>
          <property name="alignment"><set>Qt::AlignmentFlag::AlignLeading|Qt::AlignmentFlag::AlignLeft|Qt::AlignmentFlag::AlignTop</set></property>
          <property name="wordWrap"><bool>true</bool></property>
         </widget>
        </item>
+       <item row="5" column="0" colspan="2">
+        <spacer name="rightStatsVertSpacer">
+         <property name="orientation"><enum>Qt::Vertical</enum></property>
+         <property name="sizeHint" stdset="0">
+          <size><width>0</width><height>0</height></size>
+         </property>
+        </spacer>
+       </item>
       </layout>
      </item>
 
-     <!-- Spacer Column 4 -->
-     <item row="0" column="4">
+     <!-- Spacer Column 2 -->
+     <item row="0" column="2">
       <spacer name="statsGridSpacer">
        <property name="orientation"><enum>Qt::Horizontal</enum></property>
        <property name="sizeHint" stdset="0">

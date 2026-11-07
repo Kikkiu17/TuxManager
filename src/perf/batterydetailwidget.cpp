@@ -82,9 +82,9 @@ BatteryDetailWidget::BatteryDetailWidget(QWidget *parent) :
     UIHelper::EnableCopyLabelContextMenu(this->ui->statCycleCountValue);
     UIHelper::EnableCopyLabelContextMenu(this->ui->statDeviceValue);
 
-    WidgetStyle::ApplyTextStyle(this->ui->titleLabel, scheme->BatteryTitleColor, 18, true);
-    WidgetStyle::ApplyTextStyle(this->ui->modelNameLabel, scheme->MutedTextColor, 8);
-    WidgetStyle::ApplyTextStyle(this->ui->statusHeaderLabel, scheme->BatteryTitleColor, 18);
+    WidgetStyle::ApplyTextStyle(this->ui->titleLabel, scheme->BatteryTitleColor, 20, false);
+    WidgetStyle::ApplyTextStyle(this->ui->modelNameLabel, scheme->CpuHeaderValueColor, 12);
+    WidgetStyle::ApplyTextStyle(this->ui->statusHeaderLabel, scheme->CpuHeaderValueColor, 12);
     WidgetStyle::ApplyTextStyle(this->ui->capacityGraphLabel, scheme->StatLabelColor, 8);
     WidgetStyle::ApplyTextStyle(this->ui->capacityGraphMaxLabel, scheme->StatLabelColor, 8);
     WidgetStyle::ApplyTextStyle(this->ui->powerGraphLabel, scheme->StatLabelColor, 8);
@@ -94,32 +94,7 @@ BatteryDetailWidget::BatteryDetailWidget(QWidget *parent) :
     WidgetStyle::ApplyTextStyle(this->ui->powerTimeLeftLabel, scheme->AxisLabelColor, 8);
     WidgetStyle::ApplyTextStyle(this->ui->powerTimeRightLabel, scheme->AxisLabelColor, 8);
 
-    if (QGridLayout *statsGrid = this->findChild<QGridLayout *>(QStringLiteral("statsGrid")))
-    {
-        for (int i = 0; i < statsGrid->count(); ++i)
-        {
-            if (QLayoutItem *item = statsGrid->itemAt(i))
-            {
-                if (QLayout *vbox = item->layout())
-                {
-                    if (vbox->count() >= 1)
-                    {
-                        if (QLabel *label = qobject_cast<QLabel *>(vbox->itemAt(0)->widget()))
-                            WidgetStyle::ApplyTextStyle(label, scheme->StatLabelColor, 10);
-                    }
-                    if (vbox->count() >= 2)
-                    {
-                        if (QLabel *valLabel = qobject_cast<QLabel *>(vbox->itemAt(1)->widget()))
-                            WidgetStyle::ApplyTextStyle(valLabel, scheme->DarkMode ? QColor(0xee, 0xee, 0xee) : QColor(0x22, 0x22, 0x22), 14);
-                    }
-                }
-                else if (QLabel *label = qobject_cast<QLabel *>(item->widget()))
-                {
-                    WidgetStyle::ApplyTextStyle(label, scheme->StatLabelColor, 10);
-                }
-            }
-        }
-    }
+    WidgetStyle::ApplyStatsGridStyle(this, scheme);
 }
 
 BatteryDetailWidget::~BatteryDetailWidget()
@@ -145,9 +120,9 @@ void BatteryDetailWidget::SetBattery(int index)
 void BatteryDetailWidget::ApplyColorScheme()
 {
     const ColorScheme *scheme = ColorScheme::GetCurrent();
-    WidgetStyle::ApplyTextStyle(this->ui->titleLabel, scheme->BatteryTitleColor, 18, true);
-    WidgetStyle::ApplyTextStyle(this->ui->modelNameLabel, scheme->MutedTextColor, 8);
-    WidgetStyle::ApplyTextStyle(this->ui->statusHeaderLabel, scheme->BatteryTitleColor, 18);
+    WidgetStyle::ApplyTextStyle(this->ui->titleLabel, scheme->BatteryTitleColor, 20, false);
+    WidgetStyle::ApplyTextStyle(this->ui->modelNameLabel, scheme->CpuHeaderValueColor, 12);
+    WidgetStyle::ApplyTextStyle(this->ui->statusHeaderLabel, scheme->CpuHeaderValueColor, 12);
     WidgetStyle::ApplyTextStyle(this->ui->capacityGraphLabel, scheme->StatLabelColor, 8);
     WidgetStyle::ApplyTextStyle(this->ui->capacityGraphMaxLabel, scheme->StatLabelColor, 8);
     WidgetStyle::ApplyTextStyle(this->ui->powerGraphLabel, scheme->StatLabelColor, 8);
@@ -160,32 +135,7 @@ void BatteryDetailWidget::ApplyColorScheme()
     this->ui->capacityGraphWidget->SetColor(scheme->BatteryGraphLineColor, scheme->BatteryGraphFillColor, scheme->BatteryGraphSecondaryFillColor);
     this->ui->powerGraphWidget->SetColor(scheme->BatteryGraphLineColor, scheme->BatteryGraphFillColor, scheme->BatteryGraphSecondaryFillColor);
 
-    if (QGridLayout *statsGrid = this->findChild<QGridLayout *>(QStringLiteral("statsGrid")))
-    {
-        for (int i = 0; i < statsGrid->count(); ++i)
-        {
-            if (QLayoutItem *item = statsGrid->itemAt(i))
-            {
-                if (QLayout *vbox = item->layout())
-                {
-                    if (vbox->count() >= 1)
-                    {
-                        if (QLabel *label = qobject_cast<QLabel *>(vbox->itemAt(0)->widget()))
-                            WidgetStyle::ApplyTextStyle(label, scheme->StatLabelColor, 10);
-                    }
-                    if (vbox->count() >= 2)
-                    {
-                        if (QLabel *valLabel = qobject_cast<QLabel *>(vbox->itemAt(1)->widget()))
-                            WidgetStyle::ApplyTextStyle(valLabel, scheme->DarkMode ? QColor(0xee, 0xee, 0xee) : QColor(0x22, 0x22, 0x22), 14);
-                    }
-                }
-                else if (QLabel *label = qobject_cast<QLabel *>(item->widget()))
-                {
-                    WidgetStyle::ApplyTextStyle(label, scheme->StatLabelColor, 10);
-                }
-            }
-        }
-    }
+    WidgetStyle::ApplyStatsGridStyle(this, scheme);
 
     this->update();
 }
@@ -344,22 +294,5 @@ void BatteryDetailWidget::onUpdated()
 void BatteryDetailWidget::SetCompactMode(bool compact)
 {
     if (QGridLayout *statsGrid = this->findChild<QGridLayout *>(QStringLiteral("statsGrid")))
-    {
-        for (int i = 0; i < statsGrid->count(); ++i)
-        {
-            if (QLayoutItem *item = statsGrid->itemAt(i))
-            {
-                if (QWidget *w = item->widget())
-                    w->setVisible(!compact);
-                else if (QLayout *l = item->layout())
-                {
-                    for (int j = 0; j < l->count(); ++j)
-                    {
-                        if (QWidget *w = l->itemAt(j)->widget())
-                            w->setVisible(!compact);
-                    }
-                }
-            }
-        }
-    }
+        WidgetStyle::SetLayoutWidgetsVisible(statsGrid, !compact);
 }

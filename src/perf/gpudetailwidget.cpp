@@ -71,13 +71,15 @@ GpuDetailWidget::GpuDetailWidget(QWidget *parent) : QWidget(parent), ui(new Ui::
         auto *value = new QLabel("0%", this);
         value->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
         UIHelper::EnableCopyLabelContextMenu(value);
-        selector->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-        top->addWidget(selector, 1);
+        selector->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+        selector->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
+        top->addWidget(selector);
+        top->addStretch(1);
         top->addWidget(value);
 
         auto *graph = new GraphWidget(this);
         configureGraph(graph);
-        graph->setMinimumHeight(35);
+        graph->setMinimumHeight(45);
         UIHelper::EnableGraphContextMenu(graph);
 
         this->m_engineSelectors.append(selector);
@@ -125,35 +127,7 @@ GpuDetailWidget::GpuDetailWidget(QWidget *parent) : QWidget(parent), ui(new Ui::
     UIHelper::EnableCopyLabelContextMenu(this->ui->coreClockValueLabel);
     UIHelper::EnableCopyLabelContextMenu(this->ui->powerUsageValueLabel);
 
-    WidgetStyle::ApplyTextStyle(this->ui->titleLabel, scheme->GpuTitleColor, 18, true);
-    WidgetStyle::ApplyTextStyle(this->ui->copyBwLegendLabel, scheme->StatLabelColor);
-
-    if (QGridLayout *statsGrid = this->findChild<QGridLayout *>("statsGrid"))
-    {
-        for (int i = 0; i < statsGrid->count(); ++i)
-        {
-            if (QLayoutItem *item = statsGrid->itemAt(i))
-            {
-                if (QLayout *vbox = item->layout())
-                {
-                    if (vbox->count() >= 1)
-                    {
-                        if (QLabel *label = qobject_cast<QLabel *>(vbox->itemAt(0)->widget()))
-                            WidgetStyle::ApplyTextStyle(label, scheme->StatLabelColor, 10);
-                    }
-                    if (vbox->count() >= 2)
-                    {
-                        if (QLabel *valLabel = qobject_cast<QLabel *>(vbox->itemAt(1)->widget()))
-                            WidgetStyle::ApplyTextStyle(valLabel, scheme->DarkMode ? QColor(0xee, 0xee, 0xee) : QColor(0x22, 0x22, 0x22), 14);
-                    }
-                }
-                else if (QLabel *label = qobject_cast<QLabel *>(item->widget()))
-                {
-                    WidgetStyle::ApplyTextStyle(label, scheme->StatLabelColor, 10);
-                }
-            }
-        }
-    }
+    this->ApplyColorScheme();
 }
 
 GpuDetailWidget::~GpuDetailWidget()
@@ -180,8 +154,38 @@ void GpuDetailWidget::SetGpu(int index)
 void GpuDetailWidget::ApplyColorScheme()
 {
     const ColorScheme *scheme = ColorScheme::GetCurrent();
-    WidgetStyle::ApplyTextStyle(this->ui->titleLabel, scheme->GpuTitleColor, 18, true);
-    WidgetStyle::ApplyTextStyle(this->ui->copyBwLegendLabel, scheme->StatLabelColor);
+    WidgetStyle::ApplyTextStyle(this->ui->titleLabel, scheme->GpuTitleColor, 20, false);
+    WidgetStyle::ApplyTextStyle(this->ui->modelLabel, scheme->CpuHeaderValueColor, 12);
+    WidgetStyle::ApplyTextStyle(this->ui->dedicatedMemGraphLabel, scheme->StatLabelColor, 8);
+    WidgetStyle::ApplyTextStyle(this->ui->dedicatedMemGraphMaxLabel, scheme->StatLabelColor, 8);
+    WidgetStyle::ApplyTextStyle(this->ui->dedicatedTimeLeftLabel, scheme->AxisLabelColor, 8);
+    WidgetStyle::ApplyTextStyle(this->ui->dedicatedTimeRightLabel, scheme->AxisLabelColor, 8);
+    WidgetStyle::ApplyTextStyle(this->ui->sharedMemGraphLabel, scheme->StatLabelColor, 8);
+    WidgetStyle::ApplyTextStyle(this->ui->sharedMemGraphMaxLabel, scheme->StatLabelColor, 8);
+    WidgetStyle::ApplyTextStyle(this->ui->sharedTimeLeftLabel, scheme->AxisLabelColor, 8);
+    WidgetStyle::ApplyTextStyle(this->ui->sharedTimeRightLabel, scheme->AxisLabelColor, 8);
+    WidgetStyle::ApplyTextStyle(this->ui->copyBwGraphLabel, scheme->StatLabelColor, 8);
+    WidgetStyle::ApplyTextStyle(this->ui->copyBwLegendLabel, scheme->StatLabelColor, 8);
+    WidgetStyle::ApplyTextStyle(this->ui->copyBwGraphMaxLabel, scheme->StatLabelColor, 8);
+    WidgetStyle::ApplyTextStyle(this->ui->copyTimeLeftLabel, scheme->AxisLabelColor, 8);
+    WidgetStyle::ApplyTextStyle(this->ui->copyTimeRightLabel, scheme->AxisLabelColor, 8);
+
+    const QString comboCss = QStringLiteral(
+        "QComboBox { background: transparent; border: none; color: %1; font-size: 8pt; padding: 0px 14px 0px 0px; }"
+        "QComboBox:hover { color: %2; }"
+        "QComboBox::drop-down { border: none; width: 14px; }")
+        .arg(scheme->StatLabelColor.name(QColor::HexArgb),
+             (scheme->DarkMode ? QColor(0xff, 0xff, 0xff) : QColor(0x1a, 0x1a, 0x1a)).name(QColor::HexArgb));
+    for (QComboBox *combo : this->m_engineSelectors)
+    {
+        if (combo)
+            combo->setStyleSheet(comboCss);
+    }
+    for (QLabel *valLabel : this->m_engineValueLabels)
+    {
+        if (valLabel)
+            WidgetStyle::ApplyTextStyle(valLabel, scheme->StatLabelColor, 8);
+    }
 
     auto applyGraph = [scheme](GraphWidget *graph)
     {
@@ -195,32 +199,7 @@ void GpuDetailWidget::ApplyColorScheme()
     applyGraph(this->ui->sharedMemGraphWidget);
     applyGraph(this->ui->copyBwGraphWidget);
 
-    if (QGridLayout *statsGrid = this->findChild<QGridLayout *>("statsGrid"))
-    {
-        for (int i = 0; i < statsGrid->count(); ++i)
-        {
-            if (QLayoutItem *item = statsGrid->itemAt(i))
-            {
-                if (QLayout *vbox = item->layout())
-                {
-                    if (vbox->count() >= 1)
-                    {
-                        if (QLabel *label = qobject_cast<QLabel *>(vbox->itemAt(0)->widget()))
-                            WidgetStyle::ApplyTextStyle(label, scheme->StatLabelColor, 10);
-                    }
-                    if (vbox->count() >= 2)
-                    {
-                        if (QLabel *valLabel = qobject_cast<QLabel *>(vbox->itemAt(1)->widget()))
-                            WidgetStyle::ApplyTextStyle(valLabel, scheme->DarkMode ? QColor(0xee, 0xee, 0xee) : QColor(0x22, 0x22, 0x22), 14);
-                    }
-                }
-                else if (QLabel *label = qobject_cast<QLabel *>(item->widget()))
-                {
-                    WidgetStyle::ApplyTextStyle(label, scheme->StatLabelColor, 10);
-                }
-            }
-        }
-    }
+    WidgetStyle::ApplyStatsGridStyle(this, scheme);
 
     this->update();
 }
@@ -399,24 +378,7 @@ void GpuDetailWidget::bindMemoryAndCopySources()
 void GpuDetailWidget::SetCompactMode(bool compact)
 {
     if (QGridLayout *statsGrid = this->findChild<QGridLayout *>("statsGrid"))
-    {
-        for (int i = 0; i < statsGrid->count(); ++i)
-        {
-            if (QLayoutItem *item = statsGrid->itemAt(i))
-            {
-                if (QWidget *w = item->widget())
-                    w->setVisible(!compact);
-                else if (QLayout *l = item->layout())
-                {
-                    for (int j = 0; j < l->count(); ++j)
-                    {
-                        if (QWidget *w = l->itemAt(j)->widget())
-                            w->setVisible(!compact);
-                    }
-                }
-            }
-        }
-    }
+        WidgetStyle::SetLayoutWidgetsVisible(statsGrid, !compact);
 
     this->ui->dedicatedMemGraphLabel->setVisible(!compact);
     this->ui->dedicatedMemGraphMaxLabel->setVisible(!compact);
@@ -436,4 +398,7 @@ void GpuDetailWidget::SetCompactMode(bool compact)
     this->ui->copyBwGraphWidget->setVisible(!compact);
     this->ui->copyTimeLeftLabel->setVisible(!compact);
     this->ui->copyTimeRightLabel->setVisible(!compact);
+
+    if (!compact)
+        this->onUpdated();
 }

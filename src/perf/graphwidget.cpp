@@ -244,6 +244,11 @@ void GraphWidget::paintEvent(QPaintEvent * /*event*/)
         p.setPen(Qt::NoPen);
         p.setBrush(this->m_fillColor2);
         p.drawPath(kFill);
+
+        QPen secondaryPen(this->m_lineColor.lighter(115), 1.2, Qt::DashLine);
+        p.setPen(secondaryPen);
+        p.setBrush(Qt::NoBrush);
+        p.drawPath(kPath);
     }
 
     // The line itself

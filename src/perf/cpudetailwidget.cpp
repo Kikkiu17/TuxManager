@@ -38,38 +38,13 @@ CpuDetailWidget::CpuDetailWidget(QWidget *parent) : QWidget(parent), ui(new Ui::
     this->ui->setupUi(this);
     const ColorScheme *scheme = ColorScheme::GetCurrent();
 
-    WidgetStyle::ApplyTextStyle(this->ui->titleLabel, scheme->CpuTitleColor, 18, true);
-    WidgetStyle::ApplyTextStyle(this->ui->modelNameLabel, scheme->MutedTextColor, 8);
-    WidgetStyle::ApplyTextStyle(this->ui->utilizationLabel, scheme->CpuHeaderValueColor, 18);
+    WidgetStyle::ApplyTextStyle(this->ui->titleLabel, scheme->CpuTitleColor, 20, false);
+    WidgetStyle::ApplyTextStyle(this->ui->modelNameLabel, scheme->CpuHeaderValueColor, 12);
+    WidgetStyle::ApplyTextStyle(this->ui->graphSubLeftLabel, scheme->StatLabelColor, 8);
+    WidgetStyle::ApplyTextStyle(this->ui->utilizationLabel, scheme->StatLabelColor, 8);
     WidgetStyle::ApplyTextStyle(this->ui->timeLeftLabel, scheme->AxisLabelColor, 8);
     WidgetStyle::ApplyTextStyle(this->ui->timeRightLabel, scheme->AxisLabelColor, 8);
-
-    if (QGridLayout *statsGrid = this->findChild<QGridLayout *>("statsGrid"))
-    {
-        for (int i = 0; i < statsGrid->count(); ++i)
-        {
-            if (QLayoutItem *item = statsGrid->itemAt(i))
-            {
-                if (QLayout *vbox = item->layout())
-                {
-                    if (vbox->count() >= 1)
-                    {
-                        if (QLabel *label = qobject_cast<QLabel *>(vbox->itemAt(0)->widget()))
-                            WidgetStyle::ApplyTextStyle(label, scheme->StatLabelColor, 10);
-                    }
-                    if (vbox->count() >= 2)
-                    {
-                        if (QLabel *valLabel = qobject_cast<QLabel *>(vbox->itemAt(1)->widget()))
-                            WidgetStyle::ApplyTextStyle(valLabel, scheme->DarkMode ? QColor(0xee, 0xee, 0xee) : QColor(0x22, 0x22, 0x22), 14);
-                    }
-                }
-                else if (QLabel *label = qobject_cast<QLabel *>(item->widget()))
-                {
-                    WidgetStyle::ApplyTextStyle(label, scheme->StatLabelColor, 10);
-                }
-            }
-        }
-    }
+    WidgetStyle::ApplyStatsGridStyle(this, scheme);
 
     // Embed CpuGraphArea into the plain container widget from the .ui
     this->m_graphArea = new CpuGraphArea(this->ui->graphAreaContainer);
@@ -114,38 +89,13 @@ void CpuDetailWidget::Init()
 void CpuDetailWidget::ApplyColorScheme()
 {
     const ColorScheme *scheme = ColorScheme::GetCurrent();
-    WidgetStyle::ApplyTextStyle(this->ui->titleLabel, scheme->CpuTitleColor, 18, true);
-    WidgetStyle::ApplyTextStyle(this->ui->modelNameLabel, scheme->MutedTextColor, 8);
-    WidgetStyle::ApplyTextStyle(this->ui->utilizationLabel, scheme->CpuHeaderValueColor, 18);
+    WidgetStyle::ApplyTextStyle(this->ui->titleLabel, scheme->CpuTitleColor, 20, false);
+    WidgetStyle::ApplyTextStyle(this->ui->modelNameLabel, scheme->CpuHeaderValueColor, 12);
+    WidgetStyle::ApplyTextStyle(this->ui->graphSubLeftLabel, scheme->StatLabelColor, 8);
+    WidgetStyle::ApplyTextStyle(this->ui->utilizationLabel, scheme->StatLabelColor, 8);
     WidgetStyle::ApplyTextStyle(this->ui->timeLeftLabel, scheme->AxisLabelColor, 8);
     WidgetStyle::ApplyTextStyle(this->ui->timeRightLabel, scheme->AxisLabelColor, 8);
-
-    if (QGridLayout *statsGrid = this->findChild<QGridLayout *>("statsGrid"))
-    {
-        for (int i = 0; i < statsGrid->count(); ++i)
-        {
-            if (QLayoutItem *item = statsGrid->itemAt(i))
-            {
-                if (QLayout *vbox = item->layout())
-                {
-                    if (vbox->count() >= 1)
-                    {
-                        if (QLabel *label = qobject_cast<QLabel *>(vbox->itemAt(0)->widget()))
-                            WidgetStyle::ApplyTextStyle(label, scheme->StatLabelColor, 10);
-                    }
-                    if (vbox->count() >= 2)
-                    {
-                        if (QLabel *valLabel = qobject_cast<QLabel *>(vbox->itemAt(1)->widget()))
-                            WidgetStyle::ApplyTextStyle(valLabel, scheme->DarkMode ? QColor(0xee, 0xee, 0xee) : QColor(0x22, 0x22, 0x22), 14);
-                    }
-                }
-                else if (QLabel *label = qobject_cast<QLabel *>(item->widget()))
-                {
-                    WidgetStyle::ApplyTextStyle(label, scheme->StatLabelColor, 10);
-                }
-            }
-        }
-    }
+    WidgetStyle::ApplyStatsGridStyle(this, scheme);
 
     this->m_graphArea->ApplyColorScheme();
     this->update();
@@ -157,8 +107,8 @@ void CpuDetailWidget::onUpdated()
 {
     const double pct = Metrics::GetCPU()->CpuPercent();
 
-    // Header utilisation
-    this->ui->utilizationLabel->setText(QString::number(pct, 'f', 0) + "%");
+    // Graph sub-header right label (100% scale in Win11 style)
+    this->ui->utilizationLabel->setText(tr("100%"));
 
     // Stats panel
     this->ui->statUtilValue->setText(QString::number(pct, 'f', 1) + "%");
@@ -268,22 +218,5 @@ void CpuDetailWidget::onContextMenuRequested(const QPoint &globalPos)
 void CpuDetailWidget::SetCompactMode(bool compact)
 {
     if (QGridLayout *statsGrid = this->findChild<QGridLayout *>("statsGrid"))
-    {
-        for (int i = 0; i < statsGrid->count(); ++i)
-        {
-            if (QLayoutItem *item = statsGrid->itemAt(i))
-            {
-                if (QWidget *w = item->widget())
-                    w->setVisible(!compact);
-                else if (QLayout *l = item->layout())
-                {
-                    for (int j = 0; j < l->count(); ++j)
-                    {
-                        if (QWidget *w = l->itemAt(j)->widget())
-                            w->setVisible(!compact);
-                    }
-                }
-            }
-        }
-    }
+        WidgetStyle::SetLayoutWidgetsVisible(statsGrid, !compact);
 }

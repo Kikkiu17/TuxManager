@@ -40,6 +40,7 @@ SOURCES += \
     runtaskdialog.cpp \
     userswidget.cpp \
     serviceswidget.cpp \
+    os/appregistry.cpp \
     os/proc.cpp \
     os/process.cpp \
     os/processrefreshservice.cpp \
@@ -102,6 +103,7 @@ HEADERS += \
     runtaskdialog.h \
     userswidget.h \
     serviceswidget.h \
+    os/appregistry.h \
     os/proc.h \
     os/process.h \
     os/processrefreshservice.h \

@@ -17,6 +17,8 @@
  */
 
 #include "processtreemodel.h"
+
+#include "appregistry.h"
 #include "../misc.h"
 
 #include <QSet>
@@ -262,6 +264,13 @@ QVariant ProcessTreeModel::data(const QModelIndex &index, int role) const
     if (!node)
         return {};
     const Process &proc = node->process;
+
+    if (role == Qt::DecorationRole)
+    {
+        if (index.column() == ColName && this->m_appRegistry)
+            return this->m_appRegistry->IconFor(proc.IconName);
+        return {};
+    }
 
     if (role == Qt::DisplayRole)
     {
@@ -657,6 +666,8 @@ void ProcessTreeModel::buildGroupedTree(const QList<Process> &processes)
             if (!procByPid.contains(pid))
                 continue;
             const Process &p = *procByPid.value(pid);
+            if (groupNode->process.IconName.isEmpty() && !p.IconName.isEmpty())
+                groupNode->process.IconName = p.IconName;
             validProcCount++;
             if (p.IORatesAvailable)
                 anyRatesAvailable = true;

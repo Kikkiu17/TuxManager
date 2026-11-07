@@ -38,38 +38,16 @@ NetworkDetailWidget::NetworkDetailWidget(QWidget *parent) : QWidget(parent), ui(
     this->ui->setupUi(this);
     const ColorScheme *scheme = ColorScheme::GetCurrent();
 
-    WidgetStyle::ApplyTextStyle(this->ui->titleLabel, scheme->NetworkTitleColor, 18, true);
+    WidgetStyle::ApplyTextStyle(this->ui->titleLabel, scheme->NetworkTitleColor, 20, false);
+    WidgetStyle::ApplyTextStyle(this->ui->headerAdapterLabel, scheme->CpuHeaderValueColor, 12);
     WidgetStyle::ApplyTextStyle(this->ui->throughputGraphMaxLabel, scheme->StatLabelColor, 8);
     WidgetStyle::ApplyTextStyle(this->ui->throughputLabel, scheme->StatLabelColor, 8);
     WidgetStyle::ApplyTextStyle(this->ui->timeLeftLabel, scheme->AxisLabelColor, 8);
     WidgetStyle::ApplyTextStyle(this->ui->timeRightLabel, scheme->AxisLabelColor, 8);
 
-    if (QGridLayout *statsGrid = this->findChild<QGridLayout *>("statsGrid"))
-    {
-        for (int i = 0; i < statsGrid->count(); ++i)
-        {
-            if (QLayoutItem *item = statsGrid->itemAt(i))
-            {
-                if (QLayout *vbox = item->layout())
-                {
-                    if (vbox->count() >= 1)
-                    {
-                        if (QLabel *label = qobject_cast<QLabel *>(vbox->itemAt(0)->widget()))
-                            WidgetStyle::ApplyTextStyle(label, scheme->StatLabelColor, 10);
-                    }
-                    if (vbox->count() >= 2)
-                    {
-                        if (QLabel *valLabel = qobject_cast<QLabel *>(vbox->itemAt(1)->widget()))
-                            WidgetStyle::ApplyTextStyle(valLabel, scheme->DarkMode ? QColor(0xee, 0xee, 0xee) : QColor(0x22, 0x22, 0x22), 14);
-                    }
-                }
-                else if (QLabel *label = qobject_cast<QLabel *>(item->widget()))
-                {
-                    WidgetStyle::ApplyTextStyle(label, scheme->StatLabelColor, 10);
-                }
-            }
-        }
-    }
+    WidgetStyle::ApplyAccentBarStyle(this->ui->sendAccentBar, scheme->NetworkGraphLineColor.lighter(115), true);
+    WidgetStyle::ApplyAccentBarStyle(this->ui->receiveAccentBar, scheme->NetworkGraphLineColor, false);
+    WidgetStyle::ApplyStatsGridStyle(this, scheme);
 
     this->ui->throughputGraphWidget->SetColor(scheme->NetworkGraphLineColor, scheme->NetworkGraphFillColor, scheme->NetworkGraphSecondaryFillColor);
     this->ui->throughputGraphWidget->SetSampleCapacity(TUX_MANAGER_HISTORY_SIZE);
@@ -96,38 +74,16 @@ NetworkDetailWidget::~NetworkDetailWidget()
 void NetworkDetailWidget::ApplyColorScheme()
 {
     const ColorScheme *scheme = ColorScheme::GetCurrent();
-    WidgetStyle::ApplyTextStyle(this->ui->titleLabel, scheme->NetworkTitleColor, 18, true);
+    WidgetStyle::ApplyTextStyle(this->ui->titleLabel, scheme->NetworkTitleColor, 20, false);
+    WidgetStyle::ApplyTextStyle(this->ui->headerAdapterLabel, scheme->CpuHeaderValueColor, 12);
     WidgetStyle::ApplyTextStyle(this->ui->throughputGraphMaxLabel, scheme->StatLabelColor, 8);
     WidgetStyle::ApplyTextStyle(this->ui->throughputLabel, scheme->StatLabelColor, 8);
     WidgetStyle::ApplyTextStyle(this->ui->timeLeftLabel, scheme->AxisLabelColor, 8);
     WidgetStyle::ApplyTextStyle(this->ui->timeRightLabel, scheme->AxisLabelColor, 8);
 
-    if (QGridLayout *statsGrid = this->findChild<QGridLayout *>("statsGrid"))
-    {
-        for (int i = 0; i < statsGrid->count(); ++i)
-        {
-            if (QLayoutItem *item = statsGrid->itemAt(i))
-            {
-                if (QLayout *vbox = item->layout())
-                {
-                    if (vbox->count() >= 1)
-                    {
-                        if (QLabel *label = qobject_cast<QLabel *>(vbox->itemAt(0)->widget()))
-                            WidgetStyle::ApplyTextStyle(label, scheme->StatLabelColor, 10);
-                    }
-                    if (vbox->count() >= 2)
-                    {
-                        if (QLabel *valLabel = qobject_cast<QLabel *>(vbox->itemAt(1)->widget()))
-                            WidgetStyle::ApplyTextStyle(valLabel, scheme->DarkMode ? QColor(0xee, 0xee, 0xee) : QColor(0x22, 0x22, 0x22), 14);
-                    }
-                }
-                else if (QLabel *label = qobject_cast<QLabel *>(item->widget()))
-                {
-                    WidgetStyle::ApplyTextStyle(label, scheme->StatLabelColor, 10);
-                }
-            }
-        }
-    }
+    WidgetStyle::ApplyAccentBarStyle(this->ui->sendAccentBar, scheme->NetworkGraphLineColor.lighter(115), true);
+    WidgetStyle::ApplyAccentBarStyle(this->ui->receiveAccentBar, scheme->NetworkGraphLineColor, false);
+    WidgetStyle::ApplyStatsGridStyle(this, scheme);
 
     this->ui->throughputGraphWidget->SetColor(scheme->NetworkGraphLineColor, scheme->NetworkGraphFillColor, scheme->NetworkGraphSecondaryFillColor);
     this->update();
@@ -156,6 +112,7 @@ void NetworkDetailWidget::SetNetwork(int index)
         const Network::NetworkInfo &network = Metrics::GetNetwork()->FromIndex(this->m_networkIndex);
 
         this->ui->titleLabel->setText(tr("NIC (%1)").arg(network.Name));
+        this->ui->headerAdapterLabel->setText(network.Type);
         this->ui->adapterValueLabel->setText(network.Name);
         this->ui->typeValueLabel->setText(network.Type);
         this->ui->speedValueLabel->setText(network.LinkSpeedMbps > 0 ? QString::number(network.LinkSpeedMbps) + tr(" Mbps") : tr("Unknown"));
@@ -224,22 +181,5 @@ void NetworkDetailWidget::onShowBytesTriggered()
 void NetworkDetailWidget::SetCompactMode(bool compact)
 {
     if (QGridLayout *statsGrid = this->findChild<QGridLayout *>("statsGrid"))
-    {
-        for (int i = 0; i < statsGrid->count(); ++i)
-        {
-            if (QLayoutItem *item = statsGrid->itemAt(i))
-            {
-                if (QWidget *w = item->widget())
-                    w->setVisible(!compact);
-                else if (QLayout *l = item->layout())
-                {
-                    for (int j = 0; j < l->count(); ++j)
-                    {
-                        if (QWidget *w = l->itemAt(j)->widget())
-                            w->setVisible(!compact);
-                    }
-                }
-            }
-        }
-    }
+        WidgetStyle::SetLayoutWidgetsVisible(statsGrid, !compact);
 }

@@ -52,38 +52,14 @@ NpuDetailWidget::NpuDetailWidget(QWidget *parent) :
     UIHelper::EnableCopyLabelContextMenu(this->ui->statDriverVerValue);
     UIHelper::EnableCopyLabelContextMenu(this->ui->statDeviceValue);
 
-    WidgetStyle::ApplyTextStyle(this->ui->titleLabel, scheme->NpuTitleColor, 18, true);
-    WidgetStyle::ApplyTextStyle(this->ui->modelNameLabel, scheme->MutedTextColor, 8);
-    WidgetStyle::ApplyTextStyle(this->ui->utilizationLabel, scheme->NpuTitleColor, 18);
+    WidgetStyle::ApplyTextStyle(this->ui->titleLabel, scheme->NpuTitleColor, 20, false);
+    WidgetStyle::ApplyTextStyle(this->ui->modelNameLabel, scheme->CpuHeaderValueColor, 12);
+    WidgetStyle::ApplyTextStyle(this->ui->graphSubLeftLabel, scheme->StatLabelColor, 8);
+    WidgetStyle::ApplyTextStyle(this->ui->utilizationLabel, scheme->StatLabelColor, 8);
     WidgetStyle::ApplyTextStyle(this->ui->timeLeftLabel, scheme->AxisLabelColor, 8);
     WidgetStyle::ApplyTextStyle(this->ui->timeRightLabel, scheme->AxisLabelColor, 8);
 
-    if (QGridLayout *statsGrid = this->findChild<QGridLayout *>(QStringLiteral("statsGrid")))
-    {
-        for (int i = 0; i < statsGrid->count(); ++i)
-        {
-            if (QLayoutItem *item = statsGrid->itemAt(i))
-            {
-                if (QLayout *vbox = item->layout())
-                {
-                    if (vbox->count() >= 1)
-                    {
-                        if (QLabel *label = qobject_cast<QLabel *>(vbox->itemAt(0)->widget()))
-                            WidgetStyle::ApplyTextStyle(label, scheme->StatLabelColor, 10);
-                    }
-                    if (vbox->count() >= 2)
-                    {
-                        if (QLabel *valLabel = qobject_cast<QLabel *>(vbox->itemAt(1)->widget()))
-                            WidgetStyle::ApplyTextStyle(valLabel, scheme->DarkMode ? QColor(0xee, 0xee, 0xee) : QColor(0x22, 0x22, 0x22), 14);
-                    }
-                }
-                else if (QLabel *label = qobject_cast<QLabel *>(item->widget()))
-                {
-                    WidgetStyle::ApplyTextStyle(label, scheme->StatLabelColor, 10);
-                }
-            }
-        }
-    }
+    WidgetStyle::ApplyStatsGridStyle(this, scheme);
 }
 
 NpuDetailWidget::~NpuDetailWidget()
@@ -108,40 +84,16 @@ void NpuDetailWidget::SetNpu(int index)
 void NpuDetailWidget::ApplyColorScheme()
 {
     const ColorScheme *scheme = ColorScheme::GetCurrent();
-    WidgetStyle::ApplyTextStyle(this->ui->titleLabel, scheme->NpuTitleColor, 18, true);
-    WidgetStyle::ApplyTextStyle(this->ui->modelNameLabel, scheme->MutedTextColor, 8);
-    WidgetStyle::ApplyTextStyle(this->ui->utilizationLabel, scheme->NpuTitleColor, 18);
+    WidgetStyle::ApplyTextStyle(this->ui->titleLabel, scheme->NpuTitleColor, 20, false);
+    WidgetStyle::ApplyTextStyle(this->ui->modelNameLabel, scheme->CpuHeaderValueColor, 12);
+    WidgetStyle::ApplyTextStyle(this->ui->graphSubLeftLabel, scheme->StatLabelColor, 8);
+    WidgetStyle::ApplyTextStyle(this->ui->utilizationLabel, scheme->StatLabelColor, 8);
     WidgetStyle::ApplyTextStyle(this->ui->timeLeftLabel, scheme->AxisLabelColor, 8);
     WidgetStyle::ApplyTextStyle(this->ui->timeRightLabel, scheme->AxisLabelColor, 8);
 
     this->ui->graphWidget->SetColor(scheme->NpuGraphLineColor, scheme->NpuGraphFillColor, scheme->NpuGraphSecondaryFillColor);
 
-    if (QGridLayout *statsGrid = this->findChild<QGridLayout *>(QStringLiteral("statsGrid")))
-    {
-        for (int i = 0; i < statsGrid->count(); ++i)
-        {
-            if (QLayoutItem *item = statsGrid->itemAt(i))
-            {
-                if (QLayout *vbox = item->layout())
-                {
-                    if (vbox->count() >= 1)
-                    {
-                        if (QLabel *label = qobject_cast<QLabel *>(vbox->itemAt(0)->widget()))
-                            WidgetStyle::ApplyTextStyle(label, scheme->StatLabelColor, 10);
-                    }
-                    if (vbox->count() >= 2)
-                    {
-                        if (QLabel *valLabel = qobject_cast<QLabel *>(vbox->itemAt(1)->widget()))
-                            WidgetStyle::ApplyTextStyle(valLabel, scheme->DarkMode ? QColor(0xee, 0xee, 0xee) : QColor(0x22, 0x22, 0x22), 14);
-                    }
-                }
-                else if (QLabel *label = qobject_cast<QLabel *>(item->widget()))
-                {
-                    WidgetStyle::ApplyTextStyle(label, scheme->StatLabelColor, 10);
-                }
-            }
-        }
-    }
+    WidgetStyle::ApplyStatsGridStyle(this, scheme);
 
     this->update();
 }
@@ -169,7 +121,7 @@ void NpuDetailWidget::onUpdated()
     const NPU::NPUInfo &npu = Metrics::GetNPU()->FromIndex(this->m_npuIndex);
 
     const QString utilText = QString::number(npu.UtilPct, 'f', 0) + QLatin1String("%");
-    this->ui->utilizationLabel->setText(utilText);
+    this->ui->utilizationLabel->setText(tr("100%"));
     this->ui->statUtilValue->setText(utilText);
 
     if (npu.CurrentFreqMHz >= 0)
@@ -196,22 +148,5 @@ void NpuDetailWidget::onUpdated()
 void NpuDetailWidget::SetCompactMode(bool compact)
 {
     if (QGridLayout *statsGrid = this->findChild<QGridLayout *>(QStringLiteral("statsGrid")))
-    {
-        for (int i = 0; i < statsGrid->count(); ++i)
-        {
-            if (QLayoutItem *item = statsGrid->itemAt(i))
-            {
-                if (QWidget *w = item->widget())
-                    w->setVisible(!compact);
-                else if (QLayout *l = item->layout())
-                {
-                    for (int j = 0; j < l->count(); ++j)
-                    {
-                        if (QWidget *w = l->itemAt(j)->widget())
-                            w->setVisible(!compact);
-                    }
-                }
-            }
-        }
-    }
+        WidgetStyle::SetLayoutWidgetsVisible(statsGrid, !compact);
 }

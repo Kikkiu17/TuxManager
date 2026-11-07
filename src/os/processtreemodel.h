@@ -26,6 +26,8 @@
 
 namespace OS
 {
+    class AppRegistry;
+
     class ProcessTreeModel : public QAbstractItemModel
     {
         Q_OBJECT
@@ -75,6 +77,8 @@ namespace OS
             void SetMode(Mode mode);
             Mode GetMode() const { return this->m_mode; }
             void SetProcesses(const QList<Process> &processes);
+            /// Registry used to provide icons for the name column; nullptr disables icons.
+            void SetAppRegistry(AppRegistry *registry) { this->m_appRegistry = registry; }
             QModelIndex IndexForPid(pid_t pid) const;
             QList<pid_t> PidsForIndex(const QModelIndex &index) const;
             bool IsGroupIndex(const QModelIndex &index) const;
@@ -91,6 +95,7 @@ namespace OS
 
             Mode m_mode { Mode::ApplicationGrouped };
             Node *m_root { nullptr };
+            AppRegistry *m_appRegistry { nullptr };
             QHash<pid_t, Node *> m_byPid;
             QHash<pid_t, Node *> m_groupHeaders;
 

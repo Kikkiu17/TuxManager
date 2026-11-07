@@ -27,8 +27,8 @@ SidePanel::SidePanel(QWidget *parent) : QWidget(parent)
     , m_containerLayout(new QVBoxLayout(this->m_container))
 {
     // Container inside the scroll area
-    this->m_containerLayout->setContentsMargins(0, 0, 0, 0);
-    this->m_containerLayout->setSpacing(1);
+    this->m_containerLayout->setContentsMargins(4, 4, 4, 4);
+    this->m_containerLayout->setSpacing(2);
     this->m_containerLayout->addStretch(1);      // pushes items to the top
 
     this->m_scrollArea->setWidget(this->m_container);
@@ -58,7 +58,7 @@ SidePanel::SidePanel(QWidget *parent) : QWidget(parent)
         emit this->itemContextMenuRequested(nullptr, this->m_scrollArea->viewport()->mapToGlobal(pos));
     });
 
-    this->setMinimumWidth(150);
+    this->setMinimumWidth(195);
 }
 
 void SidePanel::ApplyColorScheme()

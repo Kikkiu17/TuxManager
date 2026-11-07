@@ -35,8 +35,10 @@ MemoryDetailWidget::MemoryDetailWidget(QWidget *parent) : QWidget(parent), ui(ne
     this->ui->setupUi(this);
     const ColorScheme *scheme = ColorScheme::GetCurrent();
 
-    WidgetStyle::ApplyTextStyle(this->ui->titleLabel, scheme->MemoryTitleColor, 18, true);
-    WidgetStyle::ApplyTextStyle(this->ui->totalLabel, scheme->MemoryHeaderValueColor, 18);
+    WidgetStyle::ApplyTextStyle(this->ui->titleLabel, scheme->MemoryTitleColor, 20, false);
+    WidgetStyle::ApplyTextStyle(this->ui->totalLabel, scheme->MemoryHeaderValueColor, 12);
+    WidgetStyle::ApplyTextStyle(this->ui->graphSubLeftLabel, scheme->StatLabelColor, 8);
+    WidgetStyle::ApplyTextStyle(this->ui->graphSubRightLabel, scheme->StatLabelColor, 8);
     WidgetStyle::ApplyTextStyle(this->ui->timeLeftLabel, scheme->AxisLabelColor, 8);
     WidgetStyle::ApplyTextStyle(this->ui->timeRightLabel, scheme->AxisLabelColor, 8);
     WidgetStyle::ApplyTextStyle(this->ui->compositionLabel, scheme->StatLabelColor, 8);
@@ -51,32 +53,7 @@ MemoryDetailWidget::MemoryDetailWidget(QWidget *parent) : QWidget(parent), ui(ne
     WidgetStyle::ApplyTextStyle(this->ui->legendFreeDot, scheme->MemoryLegendFreeColor, 8);
     WidgetStyle::ApplyTextStyle(this->ui->legendFreeLabel, scheme->MemoryLegendTextColor, 8);
 
-    if (QGridLayout *statsGrid = this->findChild<QGridLayout *>("statsGrid"))
-    {
-        for (int i = 0; i < statsGrid->count(); ++i)
-        {
-            if (QLayoutItem *item = statsGrid->itemAt(i))
-            {
-                if (QLayout *vbox = item->layout())
-                {
-                    if (vbox->count() >= 1)
-                    {
-                        if (QLabel *label = qobject_cast<QLabel *>(vbox->itemAt(0)->widget()))
-                            WidgetStyle::ApplyTextStyle(label, scheme->StatLabelColor, 10);
-                    }
-                    if (vbox->count() >= 2)
-                    {
-                        if (QLabel *valLabel = qobject_cast<QLabel *>(vbox->itemAt(1)->widget()))
-                            WidgetStyle::ApplyTextStyle(valLabel, scheme->DarkMode ? QColor(0xee, 0xee, 0xee) : QColor(0x22, 0x22, 0x22), 14);
-                    }
-                }
-                else if (QLabel *label = qobject_cast<QLabel *>(item->widget()))
-                {
-                    WidgetStyle::ApplyTextStyle(label, scheme->StatLabelColor, 10);
-                }
-            }
-        }
-    }
+    WidgetStyle::ApplyStatsGridStyle(this, scheme);
 
     // Memory graph: purple / magenta
     this->ui->graphWidget->SetColor(scheme->MemoryGraphLineColor, scheme->MemoryGraphFillColor);
@@ -107,8 +84,10 @@ MemoryDetailWidget::~MemoryDetailWidget()
 void MemoryDetailWidget::ApplyColorScheme()
 {
     const ColorScheme *scheme = ColorScheme::GetCurrent();
-    WidgetStyle::ApplyTextStyle(this->ui->titleLabel, scheme->MemoryTitleColor, 18, true);
-    WidgetStyle::ApplyTextStyle(this->ui->totalLabel, scheme->MemoryHeaderValueColor, 18);
+    WidgetStyle::ApplyTextStyle(this->ui->titleLabel, scheme->MemoryTitleColor, 20, false);
+    WidgetStyle::ApplyTextStyle(this->ui->totalLabel, scheme->MemoryHeaderValueColor, 12);
+    WidgetStyle::ApplyTextStyle(this->ui->graphSubLeftLabel, scheme->StatLabelColor, 8);
+    WidgetStyle::ApplyTextStyle(this->ui->graphSubRightLabel, scheme->StatLabelColor, 8);
     WidgetStyle::ApplyTextStyle(this->ui->timeLeftLabel, scheme->AxisLabelColor, 8);
     WidgetStyle::ApplyTextStyle(this->ui->timeRightLabel, scheme->AxisLabelColor, 8);
     WidgetStyle::ApplyTextStyle(this->ui->compositionLabel, scheme->StatLabelColor, 8);
@@ -123,32 +102,7 @@ void MemoryDetailWidget::ApplyColorScheme()
     WidgetStyle::ApplyTextStyle(this->ui->legendFreeDot, scheme->MemoryLegendFreeColor, 8);
     WidgetStyle::ApplyTextStyle(this->ui->legendFreeLabel, scheme->MemoryLegendTextColor, 8);
 
-    if (QGridLayout *statsGrid = this->findChild<QGridLayout *>("statsGrid"))
-    {
-        for (int i = 0; i < statsGrid->count(); ++i)
-        {
-            if (QLayoutItem *item = statsGrid->itemAt(i))
-            {
-                if (QLayout *vbox = item->layout())
-                {
-                    if (vbox->count() >= 1)
-                    {
-                        if (QLabel *label = qobject_cast<QLabel *>(vbox->itemAt(0)->widget()))
-                            WidgetStyle::ApplyTextStyle(label, scheme->StatLabelColor, 10);
-                    }
-                    if (vbox->count() >= 2)
-                    {
-                        if (QLabel *valLabel = qobject_cast<QLabel *>(vbox->itemAt(1)->widget()))
-                            WidgetStyle::ApplyTextStyle(valLabel, scheme->DarkMode ? QColor(0xee, 0xee, 0xee) : QColor(0x22, 0x22, 0x22), 14);
-                    }
-                }
-                else if (QLabel *label = qobject_cast<QLabel *>(item->widget()))
-                {
-                    WidgetStyle::ApplyTextStyle(label, scheme->StatLabelColor, 10);
-                }
-            }
-        }
-    }
+    WidgetStyle::ApplyStatsGridStyle(this, scheme);
 
     this->ui->graphWidget->SetColor(scheme->MemoryGraphLineColor, scheme->MemoryGraphFillColor);
     this->ui->compositionBar->update();
@@ -162,7 +116,9 @@ void MemoryDetailWidget::Init()
     const qint64 total = Metrics::GetMemory()->MemTotalKb();
     this->m_memHistory = &Metrics::GetMemory()->MemHistory();
 
-    this->ui->totalLabel->setText(Misc::FormatKiB(static_cast<quint64>(qMax<qint64>(0, total)), 1));
+    const QString formattedTotal = Misc::FormatKiB(static_cast<quint64>(qMax<qint64>(0, total)), 1);
+    this->ui->totalLabel->setText(formattedTotal);
+    this->ui->graphSubRightLabel->setText(formattedTotal);
     this->ui->graphWidget->SetPercentTooltipAbsolute(static_cast<double>(total) / (1024.0 * 1024.0), tr("GB"), 2);
     this->ui->graphWidget->SetDataSource(*this->m_memHistory);
 
@@ -252,24 +208,7 @@ void MemoryDetailWidget::SetCompactMode(bool compact)
     this->ui->compositionBar->setVisible(!compact);
 
     if (QGridLayout *statsGrid = this->findChild<QGridLayout *>("statsGrid"))
-    {
-        for (int i = 0; i < statsGrid->count(); ++i)
-        {
-            if (QLayoutItem *item = statsGrid->itemAt(i))
-            {
-                if (QWidget *w = item->widget())
-                    w->setVisible(!compact);
-                else if (QLayout *l = item->layout())
-                {
-                    for (int j = 0; j < l->count(); ++j)
-                    {
-                        if (QWidget *w = l->itemAt(j)->widget())
-                            w->setVisible(!compact);
-                    }
-                }
-            }
-        }
-    }
+        WidgetStyle::SetLayoutWidgetsVisible(statsGrid, !compact);
 
     if (!compact && !Metrics::GetMemory()->HasCompressedMemory())
     {
