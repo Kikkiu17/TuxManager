@@ -21,6 +21,7 @@
 
 #include "../gpu.h"
 
+#include <QString>
 #include <memory>
 #include <vector>
 
@@ -35,10 +36,21 @@ class GpuNvmlBackend
         bool IsAvailable() const { return this->m_available; }
 
     private:
+        struct DeviceEntry
+        {
+            void   *handle { nullptr };
+            QString id;
+            QString name;
+            QString pciRuntimeStatusPath;
+            qint64  totalMemMiB { 0 };
+        };
+
         void unload();
 
         bool    m_available { false };
         void   *m_libHandle { nullptr };
+        QString m_driverVersion;
+        std::vector<DeviceEntry> m_devices;
 };
 
 #endif // GPUNVMLBACKEND_H

@@ -20,6 +20,8 @@
 #include "../../logger.h"
 #include "../../misc.h"
 
+#include <QDir>
+#include <QFile>
 #include <QSet>
 #include <dlfcn.h>
 
@@ -39,6 +41,17 @@ namespace
         uint64_t total;
         uint64_t free;
         uint64_t used;
+    };
+
+    struct NvmlPciInfo
+    {
+        char busIdLegacy[16];
+        unsigned int domain;
+        unsigned int bus;
+        unsigned int device;
+        unsigned int pciDeviceId;
+        unsigned int pciSubSystemId;
+        char busId[32];
     };
 
     struct NvmlProcessInfo_v2
@@ -68,6 +81,7 @@ namespace
     using FnNvmlDeviceGetHandleByIndexV2 = NvmlReturn (*)(unsigned int, NvmlDevice *);
     using FnNvmlDeviceGetName = NvmlReturn (*)(NvmlDevice, char *, unsigned int);
     using FnNvmlDeviceGetUUID = NvmlReturn (*)(NvmlDevice, char *, unsigned int);
+    using FnNvmlDeviceGetPciInfo = NvmlReturn (*)(NvmlDevice, NvmlPciInfo *);
     using FnNvmlDeviceGetUtilizationRates = NvmlReturn (*)(NvmlDevice, NvmlUtilization *);
     using FnNvmlDeviceGetMemoryInfo = NvmlReturn (*)(NvmlDevice, NvmlMemory *);
     using FnNvmlDeviceGetEncoderUtilization = NvmlReturn (*)(NvmlDevice, unsigned int *, unsigned int *);
@@ -91,6 +105,7 @@ namespace
     FnNvmlDeviceGetHandleByIndexV2 pNvmlDeviceGetHandleByIndexV2 = nullptr;
     FnNvmlDeviceGetName pNvmlDeviceGetName = nullptr;
     FnNvmlDeviceGetUUID pNvmlDeviceGetUUID = nullptr;
+    FnNvmlDeviceGetPciInfo pNvmlDeviceGetPciInfo = nullptr;
     FnNvmlDeviceGetUtilizationRates pNvmlDeviceGetUtilizationRates = nullptr;
     FnNvmlDeviceGetMemoryInfo pNvmlDeviceGetMemoryInfo = nullptr;
     FnNvmlDeviceGetEncoderUtilization pNvmlDeviceGetEncoderUtilization = nullptr;
@@ -99,6 +114,19 @@ namespace
     FnNvmlDeviceGetTemperature pNvmlDeviceGetTemperature = nullptr;
     FnNvmlDeviceGetClockInfo pNvmlDeviceGetClockInfo = nullptr;
     FnNvmlDeviceGetPowerUsage pNvmlDeviceGetPowerUsage = nullptr;
+
+    bool isDeviceSuspended(const QString &runtimeStatusPath)
+    {
+        if (runtimeStatusPath.isEmpty())
+            return false;
+
+        QFile file(runtimeStatusPath);
+        if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+            return false;
+
+        const QByteArray status = file.read(32).trimmed();
+        return (status == "suspended" || status == "suspending");
+    }
 
     GPU::GPUInfo *findOrCreateGpu(std::vector<std::unique_ptr<GPU::GPUInfo>> &gpus, const QString &id)
     {
@@ -156,6 +184,9 @@ void GpuNvmlBackend::Detect()
     pNvmlDeviceGetHandleByIndexV2 = reinterpret_cast<FnNvmlDeviceGetHandleByIndexV2>(::dlsym(this->m_libHandle, "nvmlDeviceGetHandleByIndex_v2"));
     pNvmlDeviceGetName = reinterpret_cast<FnNvmlDeviceGetName>(::dlsym(this->m_libHandle, "nvmlDeviceGetName"));
     pNvmlDeviceGetUUID = reinterpret_cast<FnNvmlDeviceGetUUID>(::dlsym(this->m_libHandle, "nvmlDeviceGetUUID"));
+    pNvmlDeviceGetPciInfo = reinterpret_cast<FnNvmlDeviceGetPciInfo>(::dlsym(this->m_libHandle, "nvmlDeviceGetPciInfo_v3"));
+    if (!pNvmlDeviceGetPciInfo)
+        pNvmlDeviceGetPciInfo = reinterpret_cast<FnNvmlDeviceGetPciInfo>(::dlsym(this->m_libHandle, "nvmlDeviceGetPciInfo"));
     pNvmlDeviceGetUtilizationRates = reinterpret_cast<FnNvmlDeviceGetUtilizationRates>(::dlsym(this->m_libHandle, "nvmlDeviceGetUtilizationRates"));
     pNvmlDeviceGetMemoryInfo = reinterpret_cast<FnNvmlDeviceGetMemoryInfo>(::dlsym(this->m_libHandle, "nvmlDeviceGetMemoryInfo"));
     pNvmlDeviceGetEncoderUtilization = reinterpret_cast<FnNvmlDeviceGetEncoderUtilization>(::dlsym(this->m_libHandle, "nvmlDeviceGetEncoderUtilization"));
@@ -194,32 +225,13 @@ void GpuNvmlBackend::Detect()
         return;
     }
 
-    this->m_available = true;
-}
-
-bool GpuNvmlBackend::Sample(std::vector<std::unique_ptr<GPU::GPUInfo>> &gpus)
-{
-    if (!this->m_available || !pNvmlDeviceGetCountV2 || !pNvmlDeviceGetHandleByIndexV2)
-        return false;
-
-    unsigned int count = 0;
-    if (pNvmlDeviceGetCountV2(&count) != NVML_SUCCESS)
-        return false;
-
     char driverVer[96] = {};
     if (pNvmlSystemGetDriverVersion)
         pNvmlSystemGetDriverVersion(driverVer, sizeof(driverVer));
-    const QString driverVersion = QString::fromLatin1(driverVer).trimmed();
-
-    QSet<QString> seenIds;
+    this->m_driverVersion = QString::fromLatin1(driverVer).trimmed();
 
     for (unsigned int i = 0; i < count; ++i)
     {
-        static constexpr unsigned int kNvmlPcieTxBytes = 0;
-        static constexpr unsigned int kNvmlPcieRxBytes = 1;
-        static constexpr unsigned int kNvmlTemperatureGpu = 0;
-        static constexpr unsigned int kNvmlClockGraphics = 0;
-
         NvmlDevice dev = nullptr;
         if (pNvmlDeviceGetHandleByIndexV2(i, &dev) != NVML_SUCCESS || !dev)
             continue;
@@ -229,15 +241,162 @@ bool GpuNvmlBackend::Sample(std::vector<std::unique_ptr<GPU::GPUInfo>> &gpus)
         pNvmlDeviceGetName(dev, nameBuf, sizeof(nameBuf));
         pNvmlDeviceGetUUID(dev, uuidBuf, sizeof(uuidBuf));
 
-        const QString name = QString::fromLatin1(nameBuf).trimmed();
-        QString id = QString::fromLatin1(uuidBuf).trimmed();
-        if (id.isEmpty())
-            id = QString("gpu-%1").arg(i);
+        DeviceEntry entry;
+        entry.handle = dev;
+        entry.name = QString::fromLatin1(nameBuf).trimmed();
+        entry.id = QString::fromLatin1(uuidBuf).trimmed();
+        if (entry.id.isEmpty())
+            entry.id = QString("gpu-%1").arg(i);
+
+        if (pNvmlDeviceGetPciInfo)
+        {
+            NvmlPciInfo pci{};
+            if (pNvmlDeviceGetPciInfo(dev, &pci) == NVML_SUCCESS)
+            {
+                unsigned int domain = 0;
+                unsigned int bus = 0;
+                unsigned int slot = 0;
+                unsigned int func = 0;
+                if (sscanf(pci.busId, "%x:%x:%x.%x", &domain, &bus, &slot, &func) == 4)
+                {
+                    QString candidate = QString::asprintf("/sys/bus/pci/devices/%04x:%02x:%02x.%x/power/runtime_status",
+                                                          domain, bus, slot, func);
+                    if (QFile::exists(candidate))
+                        entry.pciRuntimeStatusPath = candidate;
+                }
+
+                if (entry.pciRuntimeStatusPath.isEmpty())
+                {
+                    QString candidate = QString::asprintf("/sys/bus/pci/devices/%04x:%02x:%02x.0/power/runtime_status",
+                                                          pci.domain, pci.bus, pci.device);
+                    if (QFile::exists(candidate))
+                        entry.pciRuntimeStatusPath = candidate;
+                }
+            }
+        }
+
+        if (entry.pciRuntimeStatusPath.isEmpty())
+        {
+            QDir pciDir(QStringLiteral("/sys/bus/pci/devices"));
+            const QStringList dirs = pciDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+            for (const QString &sub : dirs)
+            {
+                QFile vendorFile(pciDir.filePath(sub + QStringLiteral("/vendor")));
+                if (vendorFile.open(QIODevice::ReadOnly | QIODevice::Text))
+                {
+                    if (vendorFile.readAll().trimmed().toLower() == "0x10de")
+                    {
+                        QString candidate = pciDir.filePath(sub + QStringLiteral("/power/runtime_status"));
+                        if (QFile::exists(candidate))
+                        {
+                            entry.pciRuntimeStatusPath = candidate;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        NvmlMemory mem{};
+        if (pNvmlDeviceGetMemoryInfo && pNvmlDeviceGetMemoryInfo(dev, &mem) == NVML_SUCCESS)
+        {
+            entry.totalMemMiB = static_cast<qint64>(mem.total / (1024ULL * 1024ULL));
+        }
+
+        this->m_devices.push_back(entry);
+    }
+
+    if (this->m_devices.empty())
+    {
+        LOG_DEBUG("NVML: no valid devices initialized, shutting down");
+        this->unload();
+        return;
+    }
+
+    this->m_available = true;
+}
+
+bool GpuNvmlBackend::Sample(std::vector<std::unique_ptr<GPU::GPUInfo>> &gpus)
+{
+    if (!this->m_available || this->m_devices.empty())
+        return false;
+
+    const QString &driverVersion = this->m_driverVersion;
+    QSet<QString> seenIds;
+
+    for (auto &devEntry : this->m_devices)
+    {
+        NvmlDevice dev = devEntry.handle;
+        const QString &id = devEntry.id;
+        const QString &name = devEntry.name;
+
+        // If the PCI device is runtime suspended (D3cold), do NOT call NVML query functions,
+        // as doing so forces the NVIDIA driver to wake the hardware over PCIe, blocking
+        // the calling thread for ~2 seconds.
+        if (isDeviceSuspended(devEntry.pciRuntimeStatusPath))
+        {
+            GPU::GPUInfo &gpu = *findOrCreateGpu(gpus, id);
+            gpu.ID = id;
+            gpu.Name = name;
+            gpu.DriverVersion = driverVersion;
+            gpu.Backend = QStringLiteral("NVML");
+            gpu.UtilPct = 0.0;
+            gpu.TemperatureC = -1;
+            gpu.CoreClockMHz = -1;
+            gpu.PowerUsageW = 0.0;
+            if (devEntry.totalMemMiB > 0)
+                gpu.MemTotalMiB = devEntry.totalMemMiB;
+            gpu.SharedMemUsedMiB = 0;
+            gpu.SharedMemTotalMiB = 0;
+            gpu.CopyTxBps = 0.0;
+            gpu.CopyRxBps = 0.0;
+            gpu.UtilHistory.Push(0.0);
+            const double memPct = gpu.MemTotalMiB > 0
+                                      ? static_cast<double>(gpu.MemUsedMiB) / static_cast<double>(gpu.MemTotalMiB) * 100.0
+                                      : 0.0;
+            gpu.MemUsageHistory.Push(memPct);
+            gpu.SharedMemHistory.Push(0.0);
+            Misc::PushHistoryAndUpdateMax(gpu.CopyTxHistory, 0.0, gpu.MaxCopyBps);
+            Misc::PushHistoryAndUpdateMax(gpu.CopyRxHistory, 0.0, gpu.MaxCopyBps);
+
+            QSet<QString> seenEngineKeys;
+            auto addEngine = [&](const QString &key, const QString &label, double pct)
+            {
+                GPU::GPUEngineInfo *engine = gpu.FindEngine(key);
+                if (!engine)
+                {
+                    auto newEngine = std::make_unique<GPU::GPUEngineInfo>();
+                    newEngine->Key = key;
+                    newEngine->Label = label;
+                    gpu.Engines.push_back(std::move(newEngine));
+                    engine = gpu.Engines.back().get();
+                }
+                engine->Pct = qBound(0.0, pct, 100.0);
+                engine->History.Push(engine->Pct);
+                seenEngineKeys.insert(key);
+            };
+
+            addEngine(QStringLiteral("3d"), QStringLiteral("3D"), 0.0);
+            addEngine(QStringLiteral("cuda"), QStringLiteral("CUDA"), 0.0);
+            addEngine(QStringLiteral("copy"), QStringLiteral("Copy"), 0.0);
+
+            zeroMissingEngines(gpu, seenEngineKeys);
+            seenIds.insert(id);
+            continue;
+        }
+
+        static constexpr unsigned int kNvmlPcieTxBytes = 0;
+        static constexpr unsigned int kNvmlPcieRxBytes = 1;
+        static constexpr unsigned int kNvmlTemperatureGpu = 0;
+        static constexpr unsigned int kNvmlClockGraphics = 0;
 
         NvmlUtilization util{};
         NvmlMemory mem{};
         const bool hasUtil = pNvmlDeviceGetUtilizationRates(dev, &util) == NVML_SUCCESS;
         const bool hasMem = pNvmlDeviceGetMemoryInfo(dev, &mem) == NVML_SUCCESS;
+        if (hasMem && devEntry.totalMemMiB <= 0)
+            devEntry.totalMemMiB = static_cast<qint64>(mem.total / (1024ULL * 1024ULL));
+
         unsigned int txKBps = 0;
         unsigned int rxKBps = 0;
         const bool hasTx = pNvmlDeviceGetPcieThroughput
@@ -264,7 +423,7 @@ bool GpuNvmlBackend::Sample(std::vector<std::unique_ptr<GPU::GPUInfo>> &gpus)
         gpu.CoreClockMHz = hasCoreClock ? static_cast<int>(coreClockMHz) : -1;
         gpu.PowerUsageW = hasPower ? static_cast<double>(powerMilliW) / 1000.0 : -1.0;
         gpu.MemUsedMiB = hasMem ? static_cast<qint64>(mem.used / (1024ULL * 1024ULL)) : 0;
-        gpu.MemTotalMiB = hasMem ? static_cast<qint64>(mem.total / (1024ULL * 1024ULL)) : 0;
+        gpu.MemTotalMiB = hasMem ? static_cast<qint64>(mem.total / (1024ULL * 1024ULL)) : devEntry.totalMemMiB;
         gpu.SharedMemUsedMiB = 0;
         gpu.SharedMemTotalMiB = 0;
         gpu.CopyTxBps = hasTx ? static_cast<double>(txKBps) * 1024.0 : 0.0;
@@ -427,6 +586,10 @@ void GpuNvmlBackend::unload()
     pNvmlDeviceGetGraphicsRunningProcesses = nullptr;
     pNvmlDeviceGetComputeRunningProcesses = nullptr;
     pNvmlDeviceGetProcessUtilization = nullptr;
+    pNvmlDeviceGetPciInfo = nullptr;
+
+    this->m_devices.clear();
+    this->m_driverVersion.clear();
 
     if (this->m_libHandle)
     {

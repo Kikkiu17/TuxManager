@@ -92,7 +92,8 @@ Metrics::Metrics(QObject *parent) : QObject(parent)
     // Prime baselines — first real sample will have valid deltas.
     this->sampleNow();
 
-    this->m_timer->start(this->m_intervalMs);
+    if (this->m_active)
+        this->m_timer->start(this->m_intervalMs);
 }
 
 void Metrics::SetInterval(int ms)
@@ -109,8 +110,12 @@ void Metrics::SetActive(bool active)
     this->m_active = active;
     if (active)
     {
-        // Refresh once immediately when entering Performance tab.
-        this->sample();
+        // Defer sampling to the next event loop turn so the tab switch UI transition
+        // completes instantaneously without waiting for hardware metric queries.
+        QTimer::singleShot(0, this, [this]() {
+            if (this->m_active)
+                this->sample();
+        });
         this->m_timer->start(this->m_intervalMs);
     } else
     {

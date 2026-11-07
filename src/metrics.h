@@ -88,7 +88,7 @@ class Metrics : public QObject
 
         QTimer *m_timer;
         int     m_intervalMs { 1000 };
-        bool    m_active { true };
+        bool    m_active { false };
         bool    m_processStatsEnabled { false };
         bool    m_cpuSamplingEnabled { true };
         bool    m_memorySamplingEnabled { true };

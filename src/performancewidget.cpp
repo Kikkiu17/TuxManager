@@ -190,7 +190,8 @@ PerformanceWidget::PerformanceWidget(QWidget *parent) : QWidget(parent), ui(new 
     }
     Metrics::Get()->SetProcessStatsEnabled(this->m_sidePanel->GetCurrentItem() == this->m_cpuItem && CFG->PerfShowCpu);
 
-    this->SetActive(false);
+    this->m_active = false;
+    Metrics::Get()->SetActive(false);
 
     LOG_DEBUG("PerformanceWidget initialised");
 }
