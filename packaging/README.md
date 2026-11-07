@@ -32,7 +32,7 @@ Notes:
 Required build tools/packages:
 
 ```bash
-sudo dnf install rpm-build rsync git pkgconf-pkg-config qt6-qtbase-devel qt6-linguist
+sudo dnf install rpm-build rsync git pkgconf-pkg-config qt6-qtbase-devel qt6-linguist qt6-qtsvg-devel gcc-c++ make
 ```
 
 Notes:

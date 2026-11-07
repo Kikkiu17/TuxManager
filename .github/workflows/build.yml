@@ -113,10 +113,18 @@ jobs:
           if-no-files-found: error
 
   build-rpm:
-    name: Build Linux RPM
+    name: Build Linux RPM (${{ matrix.fedora-version == 'latest' && 'Fedora Latest' || format('Fedora {0}', matrix.fedora-version) }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - fedora-version: "latest"
+            artifact-name: "TuxManager-Linux-RPM-Fedora-latest"
+          - fedora-version: "44"
+            artifact-name: "TuxManager-Linux-RPM-Fedora-44"
     container:
-      image: fedora:latest
+      image: fedora:${{ matrix.fedora-version }}
 
     steps:
       - name: Install build dependencies
@@ -144,7 +152,7 @@ jobs:
       - name: Upload Linux RPM
         uses: actions/upload-artifact@v4
         with:
-          name: TuxManager-Linux-RPM
+          name: ${{ matrix.artifact-name }}
           path: packaging/output/*.rpm
           if-no-files-found: error
 
@@ -169,11 +177,12 @@ jobs:
           name: TuxManager-Linux-DEB
           path: release_assets/
 
-      - name: Download Linux RPM
+      - name: Download Linux RPMs
         uses: actions/download-artifact@v4
         with:
-          name: TuxManager-Linux-RPM
+          pattern: TuxManager-Linux-RPM*
           path: release_assets/
+          merge-multiple: true
 
       - name: Upload Assets to GitHub Release
         uses: softprops/action-gh-release@v2
