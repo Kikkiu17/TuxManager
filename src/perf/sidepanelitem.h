@@ -48,8 +48,8 @@ namespace Perf
             void SetGraphColor(QColor line, QColor fill);
             void SetGraphGridEnabled(bool enabled);
 
-            QSize sizeHint()        const override { return QSize(215, 68); }
-            QSize minimumSizeHint() const override { return QSize(180, 64); }
+            QSize sizeHint()        const override { return QSize(160, 80); }
+            QSize minimumSizeHint() const override { return QSize(120, 70); }
 
         signals:
             void clicked();

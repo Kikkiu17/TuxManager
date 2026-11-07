@@ -23,8 +23,7 @@
 
 #include <QPainter>
 #include <QPaintEvent>
-#include <QHBoxLayout>
-#include <QStringList>
+#include <QVBoxLayout>
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
 #include <QEnterEvent>
 #endif
@@ -36,18 +35,16 @@ SidePanelItem::SidePanelItem(const QString &title, QWidget *parent) : QWidget(pa
     this->setCursor(Qt::PointingHandCursor);
     this->setMouseTracking(true);
 
-    // Windows 11 Task Manager style: mini thumbnail graph on the left,
-    // title and subtitle lines stacked to the right.
-    QHBoxLayout *lay = new QHBoxLayout(this);
-    lay->setContentsMargins(10, 10, 8, 10);
-    lay->setSpacing(10);
+    // Layout: the graph fills most of the cell; title/subtitle are painted
+    // directly in paintEvent to avoid font layout overhead.
+    QVBoxLayout *lay = new QVBoxLayout(this);
+    lay->setContentsMargins(2, 22, 2, 2);   // leave room for title text
+    lay->setSpacing(0);
     this->m_graph->SetSampleCapacity(TUX_MANAGER_HISTORY_SIZE);
     this->m_graph->SetGridEnabled(CFG->SidePanelGridEnabled);
     this->m_graph->SetHoverLineEnabled(false);
     this->m_graph->SetHoverTooltipEnabled(false);
-    this->m_graph->setFixedSize(68, 46);
-    lay->addWidget(this->m_graph, 0, Qt::AlignVCenter);
-    lay->addStretch(1);
+    lay->addWidget(this->m_graph);
     this->setLayout(lay);
 }
 
@@ -89,69 +86,68 @@ void SidePanelItem::paintEvent(QPaintEvent *event)
     QWidget::paintEvent(event);   // draw children (the graph widget)
 
     QPainter p(this);
-    p.setRenderHint(QPainter::Antialiasing, true);
     const ColorScheme *scheme = ColorScheme::GetCurrent();
 
     const QRect r = this->rect();
-    const QRectF cardRect = QRectF(r).adjusted(2.0, 1.0, -2.0, -1.0);
 
-    // Rounded card background for selected / hovered state (Windows 11 style)
+    // Background
+    QColor bg;
     if (this->m_selected)
     {
-        p.setPen(Qt::NoPen);
-        p.setBrush(scheme->SidePanelItemSelectedBackgroundColor);
-        p.drawRoundedRect(cardRect, 5.0, 5.0);
+        bg = scheme->SidePanelItemSelectedBackgroundColor;
     } else if (this->m_hovered)
     {
-        p.setPen(Qt::NoPen);
-        p.setBrush(scheme->SidePanelItemHoverBackgroundColor);
-        p.drawRoundedRect(cardRect, 5.0, 5.0);
-    } else if (scheme->SidePanelItemBackgroundColor.alpha() > 0)
+        bg = scheme->SidePanelItemHoverBackgroundColor;
+    } else
     {
-        p.setPen(Qt::NoPen);
-        p.setBrush(scheme->SidePanelItemBackgroundColor);
-        p.drawRoundedRect(cardRect, 5.0, 5.0);
+        bg = scheme->SidePanelItemBackgroundColor;
     }
 
-    // Text block to the right of the mini graph
-    QFont titleFont = this->font();
-    titleFont.setBold(false);
-    titleFont.setPointSize(10);
-    const QFontMetrics titleFm(titleFont);
+    p.fillRect(r, bg);
 
+    // Title/subtitle (single row): elide both sides to prevent overlap.
+    QFont titleFont = this->font();
+    titleFont.setBold(true);
+    titleFont.setPointSize(8);
+    const QFontMetrics titleFm(titleFont);
     QFont subFont = this->font();
-    subFont.setBold(false);
-    subFont.setPointSize(8);
+    subFont.setPointSize(7);
     const QFontMetrics subFm(subFont);
 
-    const int textLeft = this->m_graph->geometry().right() + 11;
-    const int textRightMargin = 8;
-    const int availW = qMax(0, r.width() - textLeft - textRightMargin);
+    const int left = 6;
+    const int right = 6;
+    const int top = 4;
+    const int textH = 16;
+    const int fullW = qMax(0, r.width() - left - right);
 
-    const QStringList subLines = this->m_subtitle.split('\n', Qt::SkipEmptyParts);
-    const int titleH = titleFm.height();
-    const int subLineH = subFm.height();
-    const int lineGap = 1;
-    const int totalTextH = titleH + (subLines.isEmpty() ? 0 : (2 + subLines.size() * subLineH + (subLines.size() - 1) * lineGap));
-    int curY = qMax(6, (r.height() - totalTextH) / 2);
+    // Allow a longer subtitle while keeping enough room for a readable title.
+    const int maxSubW = (fullW * 58) / 100;
+    const QString subText = subFm.elidedText(this->m_subtitle, Qt::ElideLeft, maxSubW);
+    const int subW = subFm.horizontalAdvance(subText);
 
-    const QString titleText = titleFm.elidedText(this->m_title, Qt::ElideRight, availW);
+    const int titleMaxW = qMax(0, fullW - (subW > 0 ? subW + 6 : 0));
+    const QString titleText = titleFm.elidedText(this->m_title, Qt::ElideRight, titleMaxW);
+
     p.setFont(titleFont);
     p.setPen(this->m_selected ? scheme->SidePanelItemSelectedTextColor
                               : scheme->SidePanelItemTextColor);
-    p.drawText(QRect(textLeft, curY, availW, titleH), Qt::AlignLeft | Qt::AlignVCenter, titleText);
-    curY += titleH + 2;
+    p.drawText(QRect(left, top, titleMaxW, textH), Qt::AlignLeft | Qt::AlignVCenter, titleText);
 
-    if (!subLines.isEmpty())
+    if (!subText.isEmpty())
     {
         p.setFont(subFont);
         p.setPen(scheme->SidePanelItemSubtitleColor);
-        for (const QString &rawLine : subLines)
-        {
-            const QString lineText = subFm.elidedText(rawLine, Qt::ElideRight, availW);
-            p.drawText(QRect(textLeft, curY, availW, subLineH), Qt::AlignLeft | Qt::AlignVCenter, lineText);
-            curY += subLineH + lineGap;
-        }
+        p.drawText(QRect(r.width() - right - subW, top, subW, textH),
+                   Qt::AlignRight | Qt::AlignVCenter,
+                   subText);
+    }
+
+    // Selection border
+    if (this->m_selected)
+    {
+        p.setPen(QPen(scheme->SidePanelItemSelectedBorderColor, 2));
+        p.setBrush(Qt::NoBrush);
+        p.drawRect(r.adjusted(1, 1, -1, -1));
     }
 }
 

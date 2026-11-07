@@ -220,16 +220,9 @@ void PerformanceWidget::setupLayout()
 
     const QByteArray saved_state = CFG->PerformanceSplitterState;
     if (!saved_state.isEmpty())
-    {
         this->m_splitter->restoreState(saved_state);
-        const QList<int> sizes = this->m_splitter->sizes();
-        if (sizes.size() >= 2 && sizes.at(0) < 205)
-            this->m_splitter->setSizes({ 220, qMax(480, sizes.at(1)) });
-    }
     else
-    {
-        this->m_splitter->setSizes({ 220, 680 });
-    }
+        this->m_splitter->setSizes({ 162, 680 });
 
     connect(this->m_splitter, &QSplitter::splitterMoved, this, [this](int, int)
     {
@@ -500,7 +493,7 @@ void PerformanceWidget::onProviderUpdated()
                 continue;
 
             const Storage::DiskInfo &disk = Metrics::GetStorage()->FromIndex(i);
-            const QString diskSub = tr("%1\n%2", "%1=disk type %2=active percentage").arg(disk.Type, QString::number(disk.ActivePct, 'f', 0) + "%");
+            const QString diskSub = tr("%1 %2", "%1=disk type %2=active percentage").arg(disk.Type, QString::number(disk.ActivePct, 'f', 0) + "%");
             item->Update(diskSub);
         }
     }
@@ -518,11 +511,10 @@ void PerformanceWidget::onProviderUpdated()
             const GPU::GPUInfo &gpu = Metrics::GetGPU()->FromIndex(i);
             const QString utilText = tr("%1%2", "%1=GPU utilization value %2=percent sign").arg(QString::number(gpu.UtilPct, 'f', 0), "%");
             const int tempC = gpu.TemperatureC;
-            const QString statsLine = (tempC >= 0)
-                                      ? tr("%1 (%2 C)", "%1=GPU utilization %2=temperature in Celsius")
-                                            .arg(utilText, QString::number(tempC))
-                                      : utilText;
-            const QString sub = gpu.Name.isEmpty() ? statsLine : (gpu.Name + "\n" + statsLine);
+            const QString sub = (tempC >= 0)
+                                ? tr("%1 %2C", "%1=GPU utilization %2=temperature in Celsius")
+                                      .arg(utilText, QString::number(tempC))
+                                : utilText;
             item->Update(sub);
         }
     }
@@ -590,7 +582,7 @@ void PerformanceWidget::onProviderUpdated()
             const QString downloadRate = CFG->PerfNetworkUseBits
                                          ? Misc::FormatBitsPerSecond(network.RxBps)
                                          : Misc::FormatBytesPerSecond(network.RxBps);
-            const QString netSub = tr("U: %1\nD: %2", "%1=upload rate %2=download rate").arg(uploadRate, downloadRate);
+            const QString netSub = tr("U:%1 D:%2", "%1=upload rate %2=download rate").arg(uploadRate, downloadRate);
             item->Update(netSub, network.MaxThroughputBps);
         }
     }
