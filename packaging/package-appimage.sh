@@ -117,7 +117,7 @@ mkdir -p "$BUILD_DIR" \
 
 echo "Step 1: Building application..."
 cd "$BUILD_DIR"
-"$QMAKE_CMD" "$PROJECT_ROOT/src/TuxManager.pro"
+"$QMAKE_CMD" "$PROJECT_ROOT/src/TuxManager.pro" "TUX_MANAGER_VERSION=$APP_VERSION"
 make -j"$NCPUS"
 
 echo ""

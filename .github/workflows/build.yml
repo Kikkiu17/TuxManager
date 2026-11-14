@@ -6,13 +6,125 @@ on:
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      version:
+        description: Optional exact version override (e.g. 1.0.9); leave empty to auto-increment from packaging/config
+        required: false
+        type: string
+      create_release:
+        description: Create a GitHub Release with the built assets
+        required: false
+        default: true
+        type: boolean
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  resolve-version:
+    name: Resolve Release Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.calc.outputs.version }}
+      tag_name: ${{ steps.calc.outputs.tag_name }}
+      should_release: ${{ steps.calc.outputs.should_release }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Compute release version
+        id: calc
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_CREATE_RELEASE: ${{ inputs.create_release }}
+        run: |
+          set -euo pipefail
+
+          source packaging/config
+          base_version="${APP_VERSION}"
+
+          if [ "${GITHUB_EVENT_NAME}" = "release" ]; then
+            tag_name="${GITHUB_REF_NAME}"
+            version="${tag_name#v}"
+            should_release="true"
+          elif [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ] && [ -n "${INPUT_VERSION}" ]; then
+            version="${INPUT_VERSION#v}"
+            tag_name="${version}"
+            should_release="${INPUT_CREATE_RELEASE:-true}"
+          elif [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ] && [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            tag_name="${GITHUB_REF_NAME}"
+            version="${tag_name#v}"
+            should_release="${INPUT_CREATE_RELEASE:-true}"
+          else
+            existing_tags="$(git ls-remote --tags --refs origin | awk '{print $2}' | sed 's#^refs/tags/##')"
+
+            if printf '%s' "${base_version}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+              major_minor="${base_version%.*}"
+              base_patch="${base_version##*.}"
+              escaped_mm="$(printf '%s' "${major_minor}" | sed 's/[.[\*^$()+?{|]/\\&/g')"
+
+              max_patch=""
+              if [ -n "${existing_tags}" ]; then
+                max_patch="$(printf '%s\n' "${existing_tags}" \
+                  | sed -nE "s/^${escaped_mm}\.([0-9]+)$/\1/p" \
+                  | sort -n \
+                  | tail -n 1 || true)"
+              fi
+
+              if [ -n "${max_patch}" ] && [ "${max_patch}" -ge "${base_patch}" ]; then
+                version="${major_minor}.$((max_patch + 1))"
+              else
+                version="${base_version}"
+              fi
+            else
+              escaped_base="$(printf '%s' "${base_version}" | sed 's/[.[\*^$()+?{|]/\\&/g')"
+              max_n=""
+              if [ -n "${existing_tags}" ]; then
+                max_n="$(printf '%s\n' "${existing_tags}" \
+                  | sed -nE "s/^${escaped_base}\.([0-9]+)$/\1/p" \
+                  | sort -n \
+                  | tail -n 1 || true)"
+              fi
+
+              if [ -n "${max_n}" ]; then
+                version="${base_version}.$((max_n + 1))"
+              elif [ -n "${existing_tags}" ] && printf '%s\n' "${existing_tags}" | grep -Fxq "${base_version}"; then
+                version="${base_version}.1"
+              else
+                version="${base_version}"
+              fi
+            fi
+
+            tag_name="${version}"
+            if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+              should_release="${INPUT_CREATE_RELEASE:-true}"
+            else
+              should_release="true"
+            fi
+          fi
+
+          if ! printf '%s' "${version}" | grep -Eq '^[0-9]+(\.[0-9]+)*([.+~][0-9A-Za-z.+~]+)?$'; then
+            echo "Error: invalid version '${version}' (must be valid for RPM/DEB/Arch without hyphens)." >&2
+            exit 1
+          fi
+
+          echo "Base version (packaging/config): ${base_version}"
+          echo "Resolved package version: ${version}"
+          echo "Resolved git tag: ${tag_name}"
+          echo "Create release: ${should_release}"
+
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "tag_name=${tag_name}" >> "${GITHUB_OUTPUT}"
+          echo "should_release=${should_release}" >> "${GITHUB_OUTPUT}"
+
   build-appimage:
     name: Build Linux AppImage
+    needs: resolve-version
     runs-on: ubuntu-24.04
 
     steps:
@@ -64,10 +176,12 @@ jobs:
           fi
 
       - name: Build AppImage
+        env:
+          RELEASE_VERSION: ${{ needs.resolve-version.outputs.version }}
         run: |
           export APPIMAGE_EXTRACT_AND_RUN=1
           cd packaging
-          ./package-appimage.sh
+          ./package-appimage.sh --version "${RELEASE_VERSION}"
 
       - name: Upload Linux AppImage
         uses: actions/upload-artifact@v4
@@ -78,6 +192,7 @@ jobs:
 
   build-deb:
     name: Build Linux DEB
+    needs: resolve-version
     runs-on: ubuntu-latest
 
     steps:
@@ -101,9 +216,11 @@ jobs:
             libgl1-mesa-dev
 
       - name: Build DEB
+        env:
+          RELEASE_VERSION: ${{ needs.resolve-version.outputs.version }}
         run: |
           cd packaging
-          ./package-deb.sh
+          ./package-deb.sh --version "${RELEASE_VERSION}"
 
       - name: Upload Linux DEB
         uses: actions/upload-artifact@v4
@@ -114,6 +231,7 @@ jobs:
 
   build-rpm:
     name: Build Linux RPM (${{ matrix.fedora-version == 'latest' && 'Fedora Latest' || format('Fedora {0}', matrix.fedora-version) }})
+    needs: resolve-version
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -144,10 +262,12 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build RPM
+        env:
+          RELEASE_VERSION: ${{ needs.resolve-version.outputs.version }}
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           cd packaging
-          ./package-rpm.sh
+          ./package-rpm.sh --version "${RELEASE_VERSION}"
 
       - name: Upload Linux RPM
         uses: actions/upload-artifact@v4
@@ -158,8 +278,8 @@ jobs:
 
   create-release:
     name: Upload Release Assets
-    needs: [build-appimage, build-deb, build-rpm]
-    if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && github.ref_type == 'tag')
+    needs: [resolve-version, build-appimage, build-deb, build-rpm]
+    if: needs.resolve-version.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -184,7 +304,18 @@ jobs:
           path: release_assets/
           merge-multiple: true
 
-      - name: Upload Assets to GitHub Release
+      - name: Upload Assets to Existing GitHub Release
+        if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
+          files: release_assets/*
+
+      - name: Create GitHub Release and Upload Assets
+        if: github.event_name != 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.resolve-version.outputs.tag_name }}
+          target_commitish: ${{ github.sha }}
+          name: ${{ needs.resolve-version.outputs.version }}
+          generate_release_notes: true
           files: release_assets/*

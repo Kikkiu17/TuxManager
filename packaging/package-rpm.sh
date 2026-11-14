@@ -237,7 +237,8 @@ pushd src
 %{qmake_cmd} TuxManager.pro -o ../release/Makefile \
     QMAKE_CFLAGS="%{optflags}" \
     QMAKE_CXXFLAGS="%{optflags}" \
-    QMAKE_LFLAGS="%{?build_ldflags} -Wl,--as-needed"
+    QMAKE_LFLAGS="%{?build_ldflags} -Wl,--as-needed" \
+    TUX_MANAGER_VERSION="%{version}"
 popd
 %make_build -C release
 

@@ -186,6 +186,7 @@ echo ""
 echo "Step 1: Building package with debhelper..."
 cd "$PROJECT_ROOT"
 export QMAKE="$QMAKE_CMD"
+export TUX_MANAGER_VERSION="$APP_VERSION"
 dpkg-buildpackage -b -us -uc
 
 echo ""

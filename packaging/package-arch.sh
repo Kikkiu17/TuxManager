@@ -98,7 +98,7 @@ build() {
     mkdir -p build
     cd build
 
-    qmake6 ../src/TuxManager.pro
+    qmake6 ../src/TuxManager.pro "TUX_MANAGER_VERSION=${APP_VERSION}"
     make -j"\$(nproc)"
 }
 
