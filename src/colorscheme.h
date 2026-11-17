@@ -23,6 +23,8 @@
 #include <QVector>
 #include <QVariantMap>
 
+class QApplication;
+
 class ColorScheme
 {
     public:
@@ -35,7 +37,13 @@ class ColorScheme
         static ColorScheme *GetCurrent();
         static ColorScheme DefaultLight();
         static ColorScheme DefaultDark();
+        //! Detect whether the desktop environment prefers dark mode via Qt style hints, portal, or kdeglobals.
+        static bool DetectSystemDarkMode();
         static bool DetectDarkMode();
+        //! Apply a Breeze-Dark-inspired fallback palette when Qt falls back to a light palette on a dark desktop.
+        static void ApplyFallbackThemeIfNeeded();
+        //! Watch live system theme and palette changes and refresh palettes, color schemes, and widgets.
+        static void InstallThemeWatcher(QApplication *app);
         static void Install(ColorScheme *scheme);
         static const QVector<ColorField> &Fields();
 

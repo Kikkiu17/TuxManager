@@ -17,15 +17,37 @@
  */
 
 #include "colorscheme.h"
+#include "configuration.h"
+#include "performancewidget.h"
 
 #include <QApplication>
+#include <QDBusConnection>
+#include <QDBusInterface>
+#include <QDBusReply>
+#include <QDBusVariant>
+#include <QDir>
+#include <QEvent>
+#include <QFile>
+#include <QGuiApplication>
+#include <QObject>
 #include <QPalette>
+#include <QPointer>
+#include <QStandardPaths>
+#include <QStyle>
+#include <QStyleHints>
+#include <QTextStream>
 #include <QVariant>
+#include <QWidget>
+#include <optional>
 
 ColorScheme *ColorScheme::current = nullptr;
 
 namespace
 {
+    bool s_hasInitialLightPalette = false;
+    QPalette s_initialLightPalette;
+    bool s_appliedFallbackDarkPalette = false;
+
     const ColorScheme::ColorField kColorFields[] =
     {
         { "CpuGraphLineColor", &ColorScheme::CpuGraphLineColor },
@@ -110,6 +132,262 @@ namespace
         const QColor color(text);
         return color.isValid() ? color : fallback;
     }
+
+    QString readKdeGlobalsColorScheme(const QString &path)
+    {
+        QFile file(path);
+        if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+            return QString();
+
+        bool inGeneral = false;
+        QTextStream in(&file);
+        while (!in.atEnd())
+        {
+            const QString line = in.readLine().trimmed();
+            if (line.isEmpty() || line.startsWith(QLatin1Char('#')) || line.startsWith(QLatin1Char(';')))
+                continue;
+            if (line.startsWith(QLatin1Char('[')))
+            {
+                inGeneral = (line == QLatin1String("[General]"));
+                continue;
+            }
+            if (inGeneral)
+            {
+                const int eq = line.indexOf(QLatin1Char('='));
+                if (eq > 0 && line.left(eq).trimmed() == QLatin1String("ColorScheme"))
+                    return line.mid(eq + 1).trimmed();
+            }
+        }
+        return QString();
+    }
+
+    bool isNativeKdeStyle()
+    {
+        QStyle *style = QApplication::style();
+        if (!style)
+            return false;
+        const QString styleName = style->objectName();
+        return styleName.contains(QStringLiteral("breeze"), Qt::CaseInsensitive)
+               || styleName.contains(QStringLiteral("oxygen"), Qt::CaseInsensitive);
+    }
+
+    QPalette buildBreezeDarkPalette()
+    {
+        const QColor window(0x20, 0x23, 0x26);
+        const QColor windowText(0xfc, 0xfc, 0xfc);
+        const QColor base(0x14, 0x16, 0x18);
+        const QColor alternateBase(0x1e, 0x21, 0x25);
+        const QColor toolTipBase(0x29, 0x2d, 0x32);
+        const QColor toolTipText(0xfc, 0xfc, 0xfc);
+        const QColor text(0xfc, 0xfc, 0xfc);
+        const QColor button(0x29, 0x2d, 0x32);
+        const QColor buttonText(0xfc, 0xfc, 0xfc);
+        const QColor brightText(0xff, 0xff, 0xff);
+        const QColor link(0x3d, 0xae, 0xe9);
+        const QColor linkVisited(0x9b, 0x59, 0xb6);
+        const QColor highlight(0x3d, 0xae, 0xe9);
+        const QColor highlightedText(0xfc, 0xfc, 0xfc);
+        const QColor placeholderText(0xa1, 0xa9, 0xb1);
+
+        // Construct from (button, window) so 3D bevel roles start dark instead of white.
+        QPalette palette(button, window);
+        palette.setColor(QPalette::Window, window);
+        palette.setColor(QPalette::WindowText, windowText);
+        palette.setColor(QPalette::Base, base);
+        palette.setColor(QPalette::AlternateBase, alternateBase);
+        palette.setColor(QPalette::ToolTipBase, toolTipBase);
+        palette.setColor(QPalette::ToolTipText, toolTipText);
+        palette.setColor(QPalette::Text, text);
+        palette.setColor(QPalette::Button, button);
+        palette.setColor(QPalette::ButtonText, buttonText);
+        palette.setColor(QPalette::BrightText, brightText);
+        palette.setColor(QPalette::Link, link);
+        palette.setColor(QPalette::LinkVisited, linkVisited);
+        palette.setColor(QPalette::Highlight, highlight);
+        palette.setColor(QPalette::HighlightedText, highlightedText);
+        palette.setColor(QPalette::PlaceholderText, placeholderText);
+        palette.setColor(QPalette::Light, QColor(0x39, 0x3e, 0x43));
+        palette.setColor(QPalette::Midlight, QColor(0x2e, 0x33, 0x37));
+        palette.setColor(QPalette::Dark, QColor(0x13, 0x15, 0x16));
+        palette.setColor(QPalette::Mid, QColor(0x1c, 0x1f, 0x21));
+        palette.setColor(QPalette::Shadow, QColor(0x0e, 0x0f, 0x10));
+#if QT_VERSION >= QT_VERSION_CHECK(6, 6, 0)
+        palette.setColor(QPalette::Accent, highlight);
+#endif
+
+        palette.setColor(QPalette::Inactive, QPalette::Highlight, QColor(0x1b, 0x41, 0x55));
+#if QT_VERSION >= QT_VERSION_CHECK(6, 6, 0)
+        palette.setColor(QPalette::Inactive, QPalette::Accent, QColor(0x1b, 0x41, 0x55));
+#endif
+
+        palette.setColor(QPalette::Disabled, QPalette::Window, QColor(0x1f, 0x21, 0x24));
+        palette.setColor(QPalette::Disabled, QPalette::WindowText, QColor(0x76, 0x79, 0x7c));
+        palette.setColor(QPalette::Disabled, QPalette::Base, QColor(0x13, 0x15, 0x17));
+        palette.setColor(QPalette::Disabled, QPalette::AlternateBase, QColor(0x1c, 0x1e, 0x20));
+        palette.setColor(QPalette::Disabled, QPalette::Text, QColor(0x76, 0x79, 0x7c));
+        palette.setColor(QPalette::Disabled, QPalette::Button, QColor(0x27, 0x2a, 0x2e));
+        palette.setColor(QPalette::Disabled, QPalette::ButtonText, QColor(0x76, 0x79, 0x7c));
+        palette.setColor(QPalette::Disabled, QPalette::Highlight, QColor(0x1f, 0x21, 0x24));
+        palette.setColor(QPalette::Disabled, QPalette::HighlightedText, QColor(0x76, 0x79, 0x7c));
+        palette.setColor(QPalette::Disabled, QPalette::Link, QColor(0x16, 0x41, 0x60));
+        palette.setColor(QPalette::Disabled, QPalette::LinkVisited, QColor(0x40, 0x2b, 0x4c));
+        palette.setColor(QPalette::Disabled, QPalette::PlaceholderText, QColor(0x42, 0x46, 0x4a));
+#if QT_VERSION >= QT_VERSION_CHECK(6, 6, 0)
+        palette.setColor(QPalette::Disabled, QPalette::Accent, QColor(0x1f, 0x21, 0x24));
+#endif
+        return palette;
+    }
+
+    QPalette resolveLightFallbackPalette(const QApplication *app)
+    {
+        if (s_hasInitialLightPalette)
+            return s_initialLightPalette;
+        if (app && app->style())
+            return app->style()->standardPalette();
+        return QPalette();
+    }
+}
+
+class ThemeWatcher : public QObject
+{
+    Q_OBJECT
+
+    public:
+        explicit ThemeWatcher(QApplication *app) : QObject(app), m_app(app)
+        {
+            this->m_app->installEventFilter(this);
+
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
+            if (QStyleHints *hints = QGuiApplication::styleHints())
+            {
+                connect(hints, &QStyleHints::colorSchemeChanged, this, [this](Qt::ColorScheme)
+                {
+                    if (!this->m_applyingPalette)
+                        this->applyThemeChange();
+                });
+            }
+#endif
+
+            QDBusConnection bus = QDBusConnection::sessionBus();
+            if (bus.isConnected())
+            {
+                bus.connect(QStringLiteral("org.freedesktop.portal.Desktop"),
+                            QStringLiteral("/org/freedesktop/portal/desktop"),
+                            QStringLiteral("org.freedesktop.portal.Settings"),
+                            QStringLiteral("SettingChanged"),
+                            this,
+                            SLOT(onPortalSettingChanged(QString,QString,QDBusVariant)));
+            }
+        }
+
+    protected:
+        bool eventFilter(QObject *watched, QEvent *event) override
+        {
+            if (watched != this->m_app || !event)
+                return false;
+
+            if (event->type() == QEvent::ThemeChange || event->type() == QEvent::ApplicationPaletteChange)
+            {
+                if (!this->m_applyingPalette)
+                    this->applyThemeChange();
+            }
+            return false;
+        }
+
+    private slots:
+        void onPortalSettingChanged(const QString &ns, const QString &key, const QDBusVariant &value)
+        {
+            if (this->m_applyingPalette
+                || ns != QLatin1String("org.freedesktop.appearance")
+                || key != QLatin1String("color-scheme"))
+                return;
+
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
+            // When a native KDE style + platform theme is active, Qt emits colorSchemeChanged/ThemeChange directly.
+            if (isNativeKdeStyle() && QGuiApplication::styleHints()
+                && QGuiApplication::styleHints()->colorScheme() != Qt::ColorScheme::Unknown)
+            {
+                return;
+            }
+#endif
+
+            QVariant inner = value.variant();
+            if (inner.userType() == qMetaTypeId<QDBusVariant>())
+                inner = inner.value<QDBusVariant>().variant();
+            bool ok = false;
+            const uint preference = inner.toUInt(&ok);
+            if (ok && (preference == 1 || preference == 2))
+                this->applyThemeChange(preference == 1);
+            else
+                this->applyThemeChange();
+        }
+
+    private:
+        void applyThemeChange(std::optional<bool> darkOverride = std::nullopt)
+        {
+            if (this->m_applyingPalette || !this->m_app)
+                return;
+
+            const bool darkMode = darkOverride.has_value()
+                                  ? *darkOverride
+                                  : ColorScheme::DetectDarkMode();
+            const bool nativeKde = isNativeKdeStyle();
+            const bool paletteIsDark = this->m_app->palette().color(QPalette::Window).lightness() <= 127;
+
+            if (darkMode)
+            {
+                if (!paletteIsDark)
+                {
+                    if (!s_hasInitialLightPalette)
+                    {
+                        s_initialLightPalette = this->m_app->palette();
+                        s_hasInitialLightPalette = true;
+                    }
+                    this->m_applyingPalette = true;
+                    this->m_app->setPalette(buildBreezeDarkPalette());
+                    s_appliedFallbackDarkPalette = true;
+                    this->m_applyingPalette = false;
+                }
+            } else if (paletteIsDark && (s_appliedFallbackDarkPalette || !nativeKde))
+            {
+                // Restore the light palette only when fallback dark was applied or a non-native style holds a dark palette.
+                this->m_applyingPalette = true;
+                this->m_app->setPalette(resolveLightFallbackPalette(this->m_app));
+                s_appliedFallbackDarkPalette = false;
+                this->m_applyingPalette = false;
+            }
+
+            if (!CFG->UseCustomColorScheme)
+            {
+                ColorScheme::Install(new ColorScheme(darkMode
+                                                     ? ColorScheme::DefaultDark()
+                                                     : ColorScheme::DefaultLight()));
+            }
+
+            if (PerformanceWidget *perf = PerformanceWidget::Get())
+                perf->ApplyColorScheme();
+
+            for (QWidget *topLevel : QApplication::topLevelWidgets())
+            {
+                if (!topLevel)
+                    continue;
+                topLevel->update();
+                const QList<QWidget *> children = topLevel->findChildren<QWidget *>();
+                for (QWidget *child : children)
+                {
+                    if (child)
+                        child->update();
+                }
+            }
+        }
+
+        QApplication *m_app { nullptr };
+        bool m_applyingPalette { false };
+};
+
+namespace
+{
+    QPointer<ThemeWatcher> s_themeWatcher;
 }
 
 ColorScheme *ColorScheme::GetCurrent()
@@ -119,9 +397,99 @@ ColorScheme *ColorScheme::GetCurrent()
     return ColorScheme::current;
 }
 
+bool ColorScheme::DetectSystemDarkMode()
+{
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
+    if (const QStyleHints *hints = QGuiApplication::styleHints())
+    {
+        const Qt::ColorScheme scheme = hints->colorScheme();
+        if (scheme == Qt::ColorScheme::Dark)
+            return true;
+        if (scheme == Qt::ColorScheme::Light)
+            return false;
+    }
+#endif
+
+    const QDBusConnection bus = QDBusConnection::sessionBus();
+    if (bus.isConnected())
+    {
+        QDBusInterface portal(QStringLiteral("org.freedesktop.portal.Desktop"),
+                              QStringLiteral("/org/freedesktop/portal/desktop"),
+                              QStringLiteral("org.freedesktop.portal.Settings"),
+                              bus);
+        // Keep startup fast if the portal service is unresponsive.
+        portal.setTimeout(250);
+        const QDBusReply<QDBusVariant> reply = portal.call(QStringLiteral("ReadOne"),
+                                                           QStringLiteral("org.freedesktop.appearance"),
+                                                           QStringLiteral("color-scheme"));
+        if (reply.isValid())
+        {
+            QVariant inner = reply.value().variant();
+            if (inner.userType() == qMetaTypeId<QDBusVariant>())
+                inner = inner.value<QDBusVariant>().variant();
+            bool ok = false;
+            const uint preference = inner.toUInt(&ok);
+            if (ok)
+            {
+                if (preference == 1)
+                    return true;
+                if (preference == 2)
+                    return false;
+            }
+        }
+    }
+
+    QString configDir = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation);
+    if (configDir.isEmpty())
+        configDir = QDir::homePath() + QStringLiteral("/.config");
+
+    QString kdeColorScheme = readKdeGlobalsColorScheme(configDir + QStringLiteral("/kdeglobals"));
+    if (kdeColorScheme.isEmpty())
+        kdeColorScheme = readKdeGlobalsColorScheme(configDir + QStringLiteral("/kdedefaults/kdeglobals"));
+    if (kdeColorScheme.contains(QStringLiteral("Dark"), Qt::CaseInsensitive))
+        return true;
+
+    if (QApplication::instance())
+        return QApplication::palette().color(QPalette::Window).lightness() <= 127;
+
+    return false;
+}
+
 bool ColorScheme::DetectDarkMode()
 {
-    return QApplication::palette().color(QPalette::Window).lightness() <= 127;
+    return ColorScheme::DetectSystemDarkMode();
+}
+
+void ColorScheme::ApplyFallbackThemeIfNeeded()
+{
+    if (!QApplication::instance())
+        return;
+
+    const QPalette currentPalette = QApplication::palette();
+    const bool paletteIsLight = currentPalette.color(QPalette::Window).lightness() > 127;
+    if (!s_hasInitialLightPalette && paletteIsLight)
+    {
+        s_initialLightPalette = currentPalette;
+        s_hasInitialLightPalette = true;
+    }
+
+    const bool nativeKde = isNativeKdeStyle();
+    const bool systemDark = ColorScheme::DetectSystemDarkMode();
+    const bool paletteConflicts = (systemDark && paletteIsLight);
+
+    if ((!nativeKde || paletteConflicts) && systemDark && paletteIsLight)
+    {
+        QApplication::setPalette(buildBreezeDarkPalette());
+        s_appliedFallbackDarkPalette = true;
+    }
+}
+
+void ColorScheme::InstallThemeWatcher(QApplication *app)
+{
+    if (!app || s_themeWatcher)
+        return;
+
+    s_themeWatcher = new ThemeWatcher(app);
 }
 
 const QVector<ColorScheme::ColorField> &ColorScheme::Fields()
@@ -301,3 +669,5 @@ void ColorScheme::ApplyVariantMap(const QVariantMap &map)
     for (const ColorScheme::ColorField &field : ColorScheme::Fields())
         this->*field.Member = colorFromVariant(map.value(field.Name), this->*field.Member);
 }
+
+#include "colorscheme.moc"

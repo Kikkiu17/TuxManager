@@ -17,6 +17,7 @@
  */
 
 #include "mainwindow.h"
+#include "colorscheme.h"
 #include "configuration.h"
 #include "i18n.h"
 #include "logger.h"
@@ -67,6 +68,7 @@ int main(int argc, char *argv[])
     }
 
     QApplication a(argc, argv);
+    ColorScheme::ApplyFallbackThemeIfNeeded();
     a.setOrganizationName(TUX_MANAGER_PRODUCT_NAME);
     a.setApplicationName(TUX_MANAGER_PRODUCT_NAME);
     a.setApplicationVersion(TUX_MANAGER_VERSION_STRING);
@@ -104,6 +106,7 @@ int main(int argc, char *argv[])
     // ── Bootstrap ─────────────────────────────────────────────────────────────
     CFG->Load();
     CFG->ForceGpuDrm = parser.isSet(forceDrmOption);
+    ColorScheme::InstallThemeWatcher(&a);
 
     // Install translations for the system language before any widget is
     // created, so all tr() calls already resolve to the right text.
