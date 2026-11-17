@@ -19,8 +19,8 @@
 #ifndef CONFIGURATION_H
 #define CONFIGURATION_H
 
-#include <QByteArray>
 #include <QObject>
+#include <QByteArray>
 #include <QStringList>
 #include <QVariantMap>
 #include <QVector>
