@@ -116,17 +116,46 @@ jobs:
           sudo apt-get install -y \
             build-essential \
             pkg-config \
-            qmake6 \
-            qt6-base-dev \
-            qt6-base-dev-tools \
-            qt6-l10n-tools \
-            qt6-svg-dev \
-            libqt6svg6 \
             libgl1-mesa-dev \
+            libegl1 \
+            libegl-dev \
+            libxcb-cursor0 \
+            libxcb-icccm4 \
+            libxcb-keysyms1 \
+            libxcb-shape0 \
+            libxcb-glx0 \
+            libxcb-image0 \
+            libxcb-randr0 \
+            libxcb-render-util0 \
+            libxcb-render0 \
+            libxcb-shm0 \
+            libxcb-sync1 \
+            libxcb-util1 \
+            libxcb-xfixes0 \
+            libxcb-xinerama0 \
+            libxkbcommon0 \
+            libxkbcommon-x11-0 \
+            libwayland-client0 \
+            libwayland-cursor0 \
+            libwayland-egl1 \
+            libfontconfig1 \
+            libdbus-1-3 \
             libfuse2t64 \
+            zsync \
             file \
             wget \
             curl
+
+      # Qt 6.8 LTS desktop installation includes qtbase, qtsvg, qttools (lrelease),
+      # qttranslations, qtwayland, and icu as base archives on ubuntu-24.04 (glibc 2.39).
+      - name: Install Qt 6.8
+        id: install-qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          host: 'linux'
+          target: 'desktop'
+          cache: true
 
       - name: Install linuxdeploy and plugins
         run: |
@@ -149,24 +178,20 @@ jobs:
           sudo mv squashfs-root /opt/linuxdeploy-plugin-appimage
           sudo ln -sf /opt/linuxdeploy-plugin-appimage/AppRun /usr/local/bin/linuxdeploy-plugin-appimage
 
-          # Ensure lrelease is in expected path for Qt6 tools if needed
-          if [ ! -x /usr/lib/qt6/bin/lrelease ] && command -v lrelease-qt6 >/dev/null 2>&1; then
-            sudo ln -sf "$(command -v lrelease-qt6)" /usr/lib/qt6/bin/lrelease
-          fi
-
       - name: Build AppImage
         env:
           RELEASE_VERSION: ${{ needs.resolve-version.outputs.version }}
+          QT_BIN_DIR: ${{ steps.install-qt.outputs.qt-root-dir }}/bin
         run: |
           export APPIMAGE_EXTRACT_AND_RUN=1
           cd packaging
-          ./package-appimage.sh --version "${RELEASE_VERSION}"
+          ./package-appimage.sh --qt "${QT_BIN_DIR}" --version "${RELEASE_VERSION}"
 
       - name: Upload Linux AppImage
         uses: actions/upload-artifact@v4
         with:
           name: TuxManager-Linux-AppImage
-          path: packaging/output/*.AppImage
+          path: packaging/output/*.AppImage*
           if-no-files-found: error
 
   build-deb:
