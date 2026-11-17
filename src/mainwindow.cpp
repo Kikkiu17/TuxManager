@@ -19,6 +19,9 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 #include "configuration.h"
+#include "updater.h"
+
+#include <QTimer>
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     , ui(new Ui::MainWindow)
@@ -63,6 +66,11 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
         this->ui->tabWidget->setCurrentIndex(0);
         this->m_processesWidget->ClearSearchFilter();
         this->m_processesWidget->SelectProcessByPid(pid);
+    });
+
+    QTimer::singleShot(2500, this, [this]()
+    {
+        Updater::instance()->CheckOnStartup(this);
     });
 }
 

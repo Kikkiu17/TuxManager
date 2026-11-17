@@ -22,6 +22,7 @@
 #include "../metrics.h"
 #include "../misc.h"
 #include "../performancewidget.h"
+#include "../updater.h"
 
 #include <QAbstractItemModel>
 #include <QAction>
@@ -29,6 +30,7 @@
 #include <QItemSelectionModel>
 #include <QLabel>
 #include <QMenu>
+#include <QPointer>
 #include <QStringList>
 #include <QScrollBar>
 #include <QTableView>
@@ -153,11 +155,17 @@ void UIHelper::AddGlobalContextMenuItems(QMenu *menu, QWidget *parent)
         return;
 
     menu->addSeparator();
-    QAction *aboutAction = menu->addAction(QObject::tr("About TuxManager"));
-    QObject::connect(aboutAction, &QAction::triggered, menu, [menu, parent]()
+    const QPointer<QWidget> dialogParent = parent ? parent : qobject_cast<QWidget *>(menu->parent());
+    QAction *updateAction = menu->addAction(QObject::tr("Check for updates..."));
+    QObject::connect(updateAction, &QAction::triggered, menu, [dialogParent]()
     {
-        QWidget *dialogParent = parent ? parent : qobject_cast<QWidget *>(menu->parent());
-        AboutDialog dialog(dialogParent);
+        Updater::instance()->CheckForUpdates(true, dialogParent.data());
+    });
+
+    QAction *aboutAction = menu->addAction(QObject::tr("About TuxManager"));
+    QObject::connect(aboutAction, &QAction::triggered, menu, [dialogParent]()
+    {
+        AboutDialog dialog(dialogParent.data());
         dialog.exec();
     });
 }

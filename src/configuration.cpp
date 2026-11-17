@@ -141,6 +141,11 @@ void Configuration::Load()
     this->PerfHideVirtualNetworks = s.value("Performance/HideVirtualNetworks", this->PerfHideVirtualNetworks).toBool();
     this->PerformanceSplitterState = s.value("Performance/SplitterState",     this->PerformanceSplitterState).toByteArray();
 
+    // Updates
+    this->AutoCheckUpdates     = s.value("Updates/AutoCheck",      this->AutoCheckUpdates).toBool();
+    this->LastUpdateCheckEpoch = s.value("Updates/LastCheckEpoch", this->LastUpdateCheckEpoch).toLongLong();
+    this->SkippedUpdateVersion = s.value("Updates/SkippedVersion", this->SkippedUpdateVersion).toString();
+
     // For now this is hardcoded, we may want to make it customizable later
     this->RefreshRateAvailableIntervals = { 250, 500, 1000, 2000, 5000, 15000 };
     this->DataWindowAvailableIntervals = { 60, 120, 300, 900 };
@@ -219,6 +224,11 @@ void Configuration::Save()
     s.setValue("Performance/HiddenDevices",             this->PerfHiddenDevices);
     s.setValue("Performance/HideVirtualNetworks",       this->PerfHideVirtualNetworks);
     s.setValue("Performance/SplitterState",             this->PerformanceSplitterState);
+
+    // Updates
+    s.setValue("Updates/AutoCheck",                     this->AutoCheckUpdates);
+    s.setValue("Updates/LastCheckEpoch",                this->LastUpdateCheckEpoch);
+    s.setValue("Updates/SkippedVersion",                this->SkippedUpdateVersion);
 
     s.sync();
 }

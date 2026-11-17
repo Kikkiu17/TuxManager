@@ -24,6 +24,16 @@
 #endif
 #define TUX_MANAGER_PRODUCT_NAME       "TuxManager"
 
+#ifndef TUX_MANAGER_GITHUB_REPO
+#define TUX_MANAGER_GITHUB_REPO        "Kikkiu17/TuxManager"
+#endif
+#ifndef TUX_MANAGER_HOMEPAGE_URL
+#define TUX_MANAGER_HOMEPAGE_URL       "https://github.com/" TUX_MANAGER_GITHUB_REPO
+#endif
+#ifndef TUX_MANAGER_RELEASES_URL
+#define TUX_MANAGER_RELEASES_URL       "https://github.com/" TUX_MANAGER_GITHUB_REPO "/releases"
+#endif
+
 /// Number of historical samples kept per metric (max graph window: 15 min at 1 Hz).
 #define TUX_MANAGER_HISTORY_SIZE       900
 #define TUX_MANAGER_TASK_HISTORY       20

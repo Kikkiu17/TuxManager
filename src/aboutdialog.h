@@ -36,6 +36,8 @@ class AboutDialog : public QDialog
 
     private slots:
         void on_closeButton_clicked();
+        void checkForUpdates();
+        void onUpdateCheckFinished(bool updateAvailable, const QString &latestVersion, const QString &errorMessage);
 
     private:
         Ui::AboutDialog *ui;

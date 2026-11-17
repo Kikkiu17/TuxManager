@@ -10,6 +10,11 @@ isEmpty(TUX_MANAGER_VERSION): TUX_MANAGER_VERSION = $$(TUX_MANAGER_VERSION)
     DEFINES += "TUX_MANAGER_VERSION_STRING=\\\"$$TUX_MANAGER_VERSION\\\""
 }
 
+isEmpty(TUX_MANAGER_GITHUB_REPO): TUX_MANAGER_GITHUB_REPO = $$(TUX_MANAGER_GITHUB_REPO)
+!isEmpty(TUX_MANAGER_GITHUB_REPO) {
+    DEFINES += "TUX_MANAGER_GITHUB_REPO=\\\"$$TUX_MANAGER_GITHUB_REPO\\\""
+}
+
 # You can make your code fail to compile if it uses deprecated APIs.
 # In order to do so, uncomment the following line.
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
@@ -43,6 +48,7 @@ SOURCES += \
     processeswidget.cpp \
     performancewidget.cpp \
     runtaskdialog.cpp \
+    updater.cpp \
     userswidget.cpp \
     serviceswidget.cpp \
     sensors.cpp \
@@ -108,6 +114,7 @@ HEADERS += \
     processeswidget.h \
     performancewidget.h \
     runtaskdialog.h \
+    updater.h \
     userswidget.h \
     serviceswidget.h \
     sensors.h \

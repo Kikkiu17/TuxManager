@@ -105,6 +105,11 @@ class Configuration : public QObject
         bool PerfHideVirtualNetworks { false }; ///< Convenience toggle to hide all virtual network interfaces
         QByteArray PerformanceSplitterState;   ///< Saved via QSplitter::saveState()
 
+        // ── Updates ───────────────────────────────────────────────────────────────
+        bool AutoCheckUpdates { true };      ///< Check GitHub releases on startup (at most once per 24h)
+        qint64 LastUpdateCheckEpoch { 0 };   ///< Unix epoch seconds of last completed update check
+        QString SkippedUpdateVersion;        ///< Normalized version string skipped by the user
+
     private:
         explicit Configuration(QObject *parent = nullptr);
         ~Configuration() override = default;
