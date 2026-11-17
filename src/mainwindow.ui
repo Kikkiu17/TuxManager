@@ -108,6 +108,25 @@
         </property>
        </layout>
       </widget>
+      <widget class="QWidget" name="sensorsTab">
+       <attribute name="title">
+        <string>Sensors</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="sensorsLayout">
+        <property name="leftMargin">
+         <number>0</number>
+        </property>
+        <property name="topMargin">
+         <number>0</number>
+        </property>
+        <property name="rightMargin">
+         <number>0</number>
+        </property>
+        <property name="bottomMargin">
+         <number>0</number>
+        </property>
+       </layout>
+      </widget>
      </widget>
     </item>
    </layout>

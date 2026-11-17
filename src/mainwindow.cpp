@@ -27,6 +27,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     , m_performanceWidget(new PerformanceWidget(this))
     , m_usersWidget(new UsersWidget(this->m_processRefreshService, this))
     , m_servicesWidget(new ServicesWidget(this))
+    , m_sensorsWidget(new SensorsWidget(this))
 {
     this->ui->setupUi(this);
 
@@ -40,6 +41,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     this->ui->performanceLayout->addWidget(this->m_performanceWidget);
     this->ui->usersLayout->addWidget(this->m_usersWidget);
     this->ui->servicesLayout->addWidget(this->m_servicesWidget);
+    this->ui->sensorsLayout->addWidget(this->m_sensorsWidget);
 
     // Restore previous window layout
     if (!CFG->WindowGeometry.isEmpty())
@@ -103,11 +105,12 @@ void MainWindow::showEvent(QShowEvent *event)
 
 void MainWindow::updateTabActivity(int index)
 {
-    // Tabs: 0=Processes, 1=Performance, 2=Users, 3=Services
+    // Tabs: 0=Processes, 1=Performance, 2=Users, 3=Services, 4=Sensors
     this->m_processesWidget->SetActive(index == 0);
     this->m_performanceWidget->SetActive(index == 1);
     this->m_usersWidget->SetActive(index == 2);
     this->m_servicesWidget->SetActive(index == 3);
+    this->m_sensorsWidget->SetActive(index == 4);
 
     if (index == 1 && this->m_performanceWidget)
     {

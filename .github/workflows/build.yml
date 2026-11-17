@@ -8,11 +8,11 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Optional exact version override (e.g. 1.0.9); leave empty to auto-increment from packaging/config
+        description: Optional exact version override (e.g. 1.1.1); leave empty to use the version from repository files
         required: false
         type: string
       create_release:
-        description: Create a GitHub Release with the built assets
+        description: Create or update a GitHub Release with the built assets
         required: false
         default: true
         type: boolean
@@ -46,7 +46,9 @@ jobs:
           set -euo pipefail
 
           source packaging/config
-          base_version="${APP_VERSION}"
+          config_version="${APP_VERSION:-}"
+          globals_version="$(sed -nE 's/^[[:space:]]*#define[[:space:]]+TUX_MANAGER_VERSION_STRING[[:space:]]+"([^"]+)".*/\1/p' src/globals.h | head -n 1)"
+          flake_version="$(sed -nE 's/^[[:space:]]*version[[:space:]]*=[[:space:]]*"([^"]+)";.*/\1/p' flake.nix | head -n 1)"
 
           if [ "${GITHUB_EVENT_NAME}" = "release" ]; then
             tag_name="${GITHUB_REF_NAME}"
@@ -61,45 +63,21 @@ jobs:
             version="${tag_name#v}"
             should_release="${INPUT_CREATE_RELEASE:-true}"
           else
-            existing_tags="$(git ls-remote --tags --refs origin | awk '{print $2}' | sed 's#^refs/tags/##')"
-
-            if printf '%s' "${base_version}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-              major_minor="${base_version%.*}"
-              base_patch="${base_version##*.}"
-              escaped_mm="$(printf '%s' "${major_minor}" | sed 's/[.[\*^$()+?{|]/\\&/g')"
-
-              max_patch=""
-              if [ -n "${existing_tags}" ]; then
-                max_patch="$(printf '%s\n' "${existing_tags}" \
-                  | sed -nE "s/^${escaped_mm}\.([0-9]+)$/\1/p" \
-                  | sort -n \
-                  | tail -n 1 || true)"
-              fi
-
-              if [ -n "${max_patch}" ] && [ "${max_patch}" -ge "${base_patch}" ]; then
-                version="${major_minor}.$((max_patch + 1))"
-              else
-                version="${base_version}"
-              fi
-            else
-              escaped_base="$(printf '%s' "${base_version}" | sed 's/[.[\*^$()+?{|]/\\&/g')"
-              max_n=""
-              if [ -n "${existing_tags}" ]; then
-                max_n="$(printf '%s\n' "${existing_tags}" \
-                  | sed -nE "s/^${escaped_base}\.([0-9]+)$/\1/p" \
-                  | sort -n \
-                  | tail -n 1 || true)"
-              fi
-
-              if [ -n "${max_n}" ]; then
-                version="${base_version}.$((max_n + 1))"
-              elif [ -n "${existing_tags}" ] && printf '%s\n' "${existing_tags}" | grep -Fxq "${base_version}"; then
-                version="${base_version}.1"
-              else
-                version="${base_version}"
-              fi
+            if [ -z "${config_version}" ] || [ -z "${globals_version}" ] || [ -z "${flake_version}" ]; then
+              echo "Error: failed to read version from packaging/config ('${config_version}'), src/globals.h ('${globals_version}'), or flake.nix ('${flake_version}')." >&2
+              exit 1
             fi
 
+            if [ "${config_version}" != "${globals_version}" ] || [ "${config_version}" != "${flake_version}" ]; then
+              echo "Error: version mismatch across repository files:" >&2
+              echo "  packaging/config: ${config_version}" >&2
+              echo "  src/globals.h:    ${globals_version}" >&2
+              echo "  flake.nix:        ${flake_version}" >&2
+              echo "Please update all version files to match before releasing." >&2
+              exit 1
+            fi
+
+            version="${config_version}"
             tag_name="${version}"
             if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
               should_release="${INPUT_CREATE_RELEASE:-true}"
@@ -113,10 +91,10 @@ jobs:
             exit 1
           fi
 
-          echo "Base version (packaging/config): ${base_version}"
+          echo "File versions: packaging/config=${config_version}, src/globals.h=${globals_version}, flake.nix=${flake_version}"
           echo "Resolved package version: ${version}"
           echo "Resolved git tag: ${tag_name}"
-          echo "Create release: ${should_release}"
+          echo "Create/update release: ${should_release}"
 
           echo "version=${version}" >> "${GITHUB_OUTPUT}"
           echo "tag_name=${tag_name}" >> "${GITHUB_OUTPUT}"
@@ -285,6 +263,12 @@ jobs:
       contents: write
 
     steps:
+      - name: Checkout repository
+        if: github.event_name != 'release'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Download Linux AppImage
         uses: actions/download-artifact@v4
         with:
@@ -308,14 +292,57 @@ jobs:
         if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
+          overwrite_files: true
           files: release_assets/*
 
-      - name: Create GitHub Release and Upload Assets
+      - name: Generate release notes from commit messages
+        if: github.event_name != 'release'
+        env:
+          TAG_NAME: ${{ needs.resolve-version.outputs.tag_name }}
+        run: |
+          set -euo pipefail
+
+          prev_tag="$(git describe --tags --abbrev=0 \
+            --match="[0-9]*" --match="v[0-9]*" \
+            --exclude="${TAG_NAME}" --exclude="v${TAG_NAME}" \
+            HEAD 2>/dev/null || true)"
+
+          notes_file="${RUNNER_TEMP}/release_notes.md"
+          if [ -n "${prev_tag}" ]; then
+            git log --format="- %s" "${prev_tag}..HEAD" > "${notes_file}"
+          else
+            git log -n 50 --format="- %s" HEAD > "${notes_file}"
+          fi
+
+          if [ ! -s "${notes_file}" ]; then
+            git log -1 --format="- %s" HEAD > "${notes_file}"
+          fi
+
+          echo "Previous version tag: ${prev_tag:-<none>}"
+          cat "${notes_file}"
+
+      - name: Sync existing git tag to current commit
+        if: github.event_name != 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ needs.resolve-version.outputs.tag_name }}
+        run: |
+          set -euo pipefail
+          existing_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG_NAME}" --jq 'if type == "object" then .object.sha else empty end' 2>/dev/null || true)"
+          if [ -n "${existing_sha}" ] && [ "${existing_sha}" != "${GITHUB_SHA}" ]; then
+            echo "Updating existing tag ${TAG_NAME} (${existing_sha}) -> ${GITHUB_SHA}"
+            gh api -X PATCH "repos/${GITHUB_REPOSITORY}/git/refs/tags/${TAG_NAME}" \
+              -f sha="${GITHUB_SHA}" \
+              -F force=true >/dev/null
+          fi
+
+      - name: Create or Update GitHub Release and Upload Assets
         if: github.event_name != 'release'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.resolve-version.outputs.tag_name }}
           target_commitish: ${{ github.sha }}
           name: ${{ needs.resolve-version.outputs.version }}
-          generate_release_notes: true
+          body_path: ${{ runner.temp }}/release_notes.md
+          overwrite_files: true
           files: release_assets/*

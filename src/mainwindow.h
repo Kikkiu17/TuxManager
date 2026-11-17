@@ -26,6 +26,7 @@
 #include "performancewidget.h"
 #include "userswidget.h"
 #include "serviceswidget.h"
+#include "sensorswidget.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui
@@ -57,5 +58,6 @@ class MainWindow : public QMainWindow
         PerformanceWidget *m_performanceWidget;
         UsersWidget       *m_usersWidget;
         ServicesWidget    *m_servicesWidget;
+        SensorsWidget     *m_sensorsWidget;
 };
 #endif // MAINWINDOW_H

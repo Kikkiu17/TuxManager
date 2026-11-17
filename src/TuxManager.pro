@@ -45,6 +45,8 @@ SOURCES += \
     runtaskdialog.cpp \
     userswidget.cpp \
     serviceswidget.cpp \
+    sensors.cpp \
+    sensorswidget.cpp \
     os/appregistry.cpp \
     os/proc.cpp \
     os/process.cpp \
@@ -108,6 +110,8 @@ HEADERS += \
     runtaskdialog.h \
     userswidget.h \
     serviceswidget.h \
+    sensors.h \
+    sensorswidget.h \
     os/appregistry.h \
     os/proc.h \
     os/process.h \
@@ -148,6 +152,7 @@ FORMS += \
     runtaskdialog.ui \
     userswidget.ui \
     serviceswidget.ui \
+    sensorswidget.ui \
     perf/sidepanelorderdialog.ui \
     perf/cpudetailwidget.ui \
     perf/diskdetailwidget.ui \
