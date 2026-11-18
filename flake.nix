@@ -22,7 +22,7 @@
 
         packages.default = pkgs.stdenv.mkDerivation {
             pname = "tux-manager";
-            version = "1.3.0";
+            version = "1.2.1";
             src = ./.;
             
             nativeBuildInputs = with pkgs.kdePackages; [ qmake qttools wrapQtAppsHook ];
