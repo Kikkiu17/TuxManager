@@ -107,6 +107,8 @@ class ProcessesWidget : public QWidget
         void syncAllProcessColumnVisibility();
         void updateIOMetricsEnabledState(bool triggerImmediateRefresh = true);
         bool anyIOMetricsColumnVisible() const;
+        void updatePssMetricsEnabledState(bool triggerImmediateRefresh = true);
+        bool anyPssMetricsColumnVisible() const;
         bool selectProcessInTree(pid_t pid);
         bool selectProcessInTable(pid_t pid);
         QVariant tableSelectionKeyFromProxy(const QModelIndex &proxyKeyIndex) const;

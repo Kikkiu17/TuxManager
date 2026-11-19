@@ -67,7 +67,7 @@ namespace
         item->setText(0, QObject::tr("%1 (pid %2)").arg(proc.Name).arg(proc.PID));
         item->setData(0, Qt::UserRole, static_cast<qlonglong>(proc.PID));
         item->setText(1, QString::number(proc.CPUPercent, 'f', 1) + "%");
-        item->setText(2, Misc::FormatKiB(proc.VMRssKb, 1));
+        item->setText(2, Misc::FormatKiB(proc.MemoryPssKb, 1));
         item->setTextAlignment(1, Qt::AlignRight | Qt::AlignVCenter);
         item->setTextAlignment(2, Qt::AlignRight | Qt::AlignVCenter);
     }
@@ -163,6 +163,7 @@ void UsersWidget::startRefresh()
     opts.IncludeOtherUsers = true;
     opts.MyUID = ::getuid();
     opts.CollectIOMetrics = false;
+    opts.CollectPssMetrics = true;
     opts.IsSuperuser = CFG->IsSuperuser;
     opts.EffectiveUID = CFG->EUID;
 
@@ -238,7 +239,7 @@ void UsersWidget::rebuildTree(const QList<OS::Process> &allProcs)
 
         it->procs.append(&p);
         it->cpuPct += p.CPUPercent;
-        it->memKb += p.VMRssKb;
+        it->memKb += p.MemoryPssKb;
     }
 
     QHash<uid_t, QTreeWidgetItem *> userItems;
@@ -339,8 +340,8 @@ void UsersWidget::rebuildTree(const QList<OS::Process> &allProcs)
                         return compare(x.CPUPercent, y.CPUPercent);
                     break;
                 case 2:
-                    if (x.VMRssKb != y.VMRssKb)
-                        return compare(x.VMRssKb, y.VMRssKb);
+                    if (x.MemoryPssKb != y.MemoryPssKb)
+                        return compare(x.MemoryPssKb, y.MemoryPssKb);
                     break;
                 default:
                     break;
@@ -348,8 +349,8 @@ void UsersWidget::rebuildTree(const QList<OS::Process> &allProcs)
 
             if (!qFuzzyCompare(x.CPUPercent + 1.0, y.CPUPercent + 1.0))
                 return x.CPUPercent > y.CPUPercent;
-            if (x.VMRssKb != y.VMRssKb)
-                return x.VMRssKb > y.VMRssKb;
+            if (x.MemoryPssKb != y.MemoryPssKb)
+                return x.MemoryPssKb > y.MemoryPssKb;
             if (x.Name != y.Name)
                 return x.Name.localeAwareCompare(y.Name) < 0;
             return x.PID < y.PID;

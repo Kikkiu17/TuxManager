@@ -43,6 +43,7 @@ namespace OS
                 bool  IncludeOtherUsers   { true };
                 uid_t MyUID               { 0 };
                 bool  CollectIOMetrics    { false };
+                bool  CollectPssMetrics   { false };
                 bool  IsSuperuser         { false };
                 uid_t EffectiveUID        { 0 };
             };
@@ -58,6 +59,8 @@ namespace OS
             int     Nice          { 0 };
             int     Threads       { 1 };
             quint64 VMRssKb       { 0 };      ///< Resident set size in KiB
+            quint64 MemoryPssKb   { 0 };      ///< Proportional set size in KiB (/proc/pid/smaps_rollup, fallback: PrivateRssKb)
+            bool    MemoryPssExact{ false };  ///< True when MemoryPssKb was read from smaps_rollup (or process has 0 RSS)
             quint64 vmSizeKb      { 0 };      ///< Virtual memory size in KiB
             quint64 SharedKb      { 0 };      ///< Shared resident pages in KiB (/proc/pid/statm)
             quint64 TextKb        { 0 };      ///< Text/code pages in KiB (/proc/pid/statm)
@@ -85,6 +88,11 @@ namespace OS
             static QString GetStateString(char state);
             /// Identity based on PID and StartTime (should be unique) - used by perf optimizations to avoid unnecessary queries
             Identity GetIdentity() const;
+            /// Fast private resident memory estimate (VMRssKb - SharedKb, clamped at 0).
+            quint64 PrivateRssKb() const;
+            /// Read proportional set size (PSS) in KiB from /proc/<pid>/smaps_rollup.
+            /// Uses a single unbuffered POSIX read to avoid heap allocations.
+            static bool LoadPss(pid_t pid, quint64 &outPssKb, bool *outPermissionDenied = nullptr);
 
         private:
             static bool loadOneStatAndUid(pid_t pid, Process &out);

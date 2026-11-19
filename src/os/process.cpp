@@ -23,6 +23,10 @@
 #include <QHash>
 #include <QObject>
 
+#include <cerrno>
+#include <cstdio>
+#include <cstring>
+#include <fcntl.h>
 #include <pwd.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -77,6 +81,78 @@ QString Process::GetStateString(char state)
 Process::Identity Process::GetIdentity() const
 {
     return { this->PID, this->StartTimeTicks };
+}
+
+quint64 Process::PrivateRssKb() const
+{
+    return (this->VMRssKb > this->SharedKb) ? (this->VMRssKb - this->SharedKb) : 0ULL;
+}
+
+bool Process::LoadPss(pid_t pid, quint64 &outPssKb, bool *outPermissionDenied)
+{
+    if (outPermissionDenied)
+        *outPermissionDenied = false;
+
+    char path[64];
+    std::snprintf(path, sizeof(path), "/proc/%d/smaps_rollup", static_cast<int>(pid));
+
+    const int fd = ::open(path, O_RDONLY | O_CLOEXEC);
+    if (fd < 0)
+    {
+        if (outPermissionDenied && (errno == EACCES || errno == EPERM))
+            *outPermissionDenied = true;
+        return false;
+    }
+
+    // In /proc/<pid>/smaps_rollup, "Pss:" appears on line 3 (typically within the first ~140 bytes).
+    char buf[512];
+    ssize_t bytesRead = -1;
+    do
+    {
+        bytesRead = ::read(fd, buf, sizeof(buf) - 1);
+    } while (bytesRead < 0 && errno == EINTR);
+
+    const int readErr = errno;
+    ::close(fd);
+
+    if (bytesRead <= 0)
+    {
+        if (bytesRead < 0 && outPermissionDenied && (readErr == EACCES || readErr == EPERM))
+            *outPermissionDenied = true;
+        return false;
+    }
+
+    buf[bytesRead] = '\0';
+
+    const char *pssPtr = nullptr;
+    if (std::strncmp(buf, "Pss:", 4) == 0)
+    {
+        pssPtr = buf + 4;
+    } else
+    {
+        pssPtr = std::strstr(buf, "\nPss:");
+        if (pssPtr)
+            pssPtr += 5;
+    }
+
+    if (!pssPtr)
+        return false;
+
+    while (*pssPtr == ' ' || *pssPtr == '\t')
+        ++pssPtr;
+
+    if (*pssPtr < '0' || *pssPtr > '9')
+        return false;
+
+    quint64 value = 0;
+    while (*pssPtr >= '0' && *pssPtr <= '9')
+    {
+        value = value * 10ULL + static_cast<quint64>(*pssPtr - '0');
+        ++pssPtr;
+    }
+
+    outPssKb = value;
+    return true;
 }
 
 bool OS::operator<(const Process::Identity &lhs, const Process::Identity &rhs)
@@ -153,6 +229,8 @@ bool Process::loadOneStatAndUid(pid_t pid, Process &out)
 
     const long pageSize = cachedPageSize();
     out.VMRssKb        = static_cast<quint64>(f[21].toLongLong()) * static_cast<quint64>(pageSize) / 1024ULL;
+    out.MemoryPssKb    = out.VMRssKb;
+    out.MemoryPssExact = (out.IsKernelThread || out.VMRssKb == 0);
 
     // ── UID via stat() on /proc/pid directory ─────────────────────────────────
     // The /proc/<pid> directory is owned by the process's real UID — far more
@@ -184,6 +262,8 @@ void Process::loadStatm(Process &proc)
     proc.SharedKb = fields.at(2).toULongLong() * pageKb;
     proc.TextKb   = fields.at(3).toULongLong() * pageKb;
     proc.DataKb   = fields.at(5).toULongLong() * pageKb;
+    proc.MemoryPssKb = proc.PrivateRssKb();
+    proc.MemoryPssExact = (proc.IsKernelThread || proc.VMRssKb == 0);
 }
 
 bool Process::loadIO(Process &proc)
@@ -304,6 +384,19 @@ QList<Process> Process::LoadAll(const LoadOptions &options)
             continue;
 
         loadStatm(proc);
+
+        if (options.CollectPssMetrics && !proc.IsKernelThread && proc.VMRssKb > 0)
+        {
+            if (options.IsSuperuser || proc.UID == options.EffectiveUID)
+            {
+                quint64 pssKb = 0;
+                if (LoadPss(proc.PID, pssKb))
+                {
+                    proc.MemoryPssKb = pssKb;
+                    proc.MemoryPssExact = true;
+                }
+            }
+        }
 
         if (options.CollectIOMetrics)
         {

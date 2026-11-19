@@ -281,6 +281,7 @@ QVariant ProcessTreeModel::data(const QModelIndex &index, int role) const
             case ColUser:     return proc.User;
             case ColState:    return Process::GetStateString(proc.State);
             case ColCpu:      return QString::number(proc.CPUPercent, 'f', 1) + " %";
+            case ColMemPss:   return Misc::FormatKiB(proc.MemoryPssKb, 0);
             case ColMemRss:   return Misc::FormatKiB(proc.VMRssKb, 0);
             case ColMemVirt:  return Misc::FormatKiB(proc.vmSizeKb, 0);
             case ColMemShared:return Misc::FormatKiB(proc.SharedKb, 0);
@@ -314,6 +315,7 @@ QVariant ProcessTreeModel::data(const QModelIndex &index, int role) const
         {
             case ColPid:      return static_cast<qlonglong>(proc.PID);
             case ColCpu:      return proc.CPUPercent;
+            case ColMemPss:   return static_cast<qulonglong>(proc.MemoryPssKb);
             case ColMemRss:   return static_cast<qulonglong>(proc.VMRssKb);
             case ColMemVirt:  return static_cast<qulonglong>(proc.vmSizeKb);
             case ColMemShared:return static_cast<qulonglong>(proc.SharedKb);
@@ -351,6 +353,7 @@ QVariant ProcessTreeModel::data(const QModelIndex &index, int role) const
         switch (static_cast<Column>(index.column()))
         {
             case ColCpu:
+            case ColMemPss:
             case ColMemRss:
             case ColMemVirt:
             case ColMemShared:
@@ -368,6 +371,12 @@ QVariant ProcessTreeModel::data(const QModelIndex &index, int role) const
             default:
                 return QVariant(Qt::AlignLeft | Qt::AlignVCenter);
         }
+    }
+
+    if (role == Qt::ToolTipRole)
+    {
+        if (static_cast<Column>(index.column()) == ColMemPss && !proc.MemoryPssExact && proc.VMRssKb > 0)
+            return tr("Estimated from private RSS (insufficient permissions or pending PSS sample)");
     }
 
     return {};
@@ -645,6 +654,8 @@ void ProcessTreeModel::buildGroupedTree(const QList<Process> &processes)
         // Zero out aggregate fields before accumulating
         groupNode->process.CPUPercent = 0.0;
         groupNode->process.VMRssKb = 0;
+        groupNode->process.MemoryPssKb = 0;
+        groupNode->process.MemoryPssExact = true;
         groupNode->process.vmSizeKb = 0;
         groupNode->process.SharedKb = 0;
         groupNode->process.TextKb = 0;
@@ -659,6 +670,7 @@ void ProcessTreeModel::buildGroupedTree(const QList<Process> &processes)
         bool anyRatesAvailable = false;
         bool anyTotalsAvailable = false;
         bool allPermissionDenied = true;
+        bool allPssExact = true;
         int validProcCount = 0;
 
         for (pid_t pid : memberPids)
@@ -675,9 +687,12 @@ void ProcessTreeModel::buildGroupedTree(const QList<Process> &processes)
                 anyTotalsAvailable = true;
             if (!p.IOPermissionDenied)
                 allPermissionDenied = false;
+            if (!p.MemoryPssExact)
+                allPssExact = false;
 
             groupNode->process.CPUPercent += p.CPUPercent;
             groupNode->process.VMRssKb += p.VMRssKb;
+            groupNode->process.MemoryPssKb += p.MemoryPssKb;
             groupNode->process.vmSizeKb += p.vmSizeKb;
             groupNode->process.SharedKb += p.SharedKb;
             groupNode->process.TextKb += p.TextKb;
@@ -694,6 +709,7 @@ void ProcessTreeModel::buildGroupedTree(const QList<Process> &processes)
         groupNode->process.IORatesAvailable = anyRatesAvailable;
         groupNode->process.IOTotalsAvailable = anyTotalsAvailable;
         groupNode->process.IOPermissionDenied = allPermissionDenied && (validProcCount > 0);
+        groupNode->process.MemoryPssExact = allPssExact && (validProcCount > 0);
 
         // Add child nodes: primary process first, then remaining sorted by CPU% descending
         QList<pid_t> orderedChildren;
@@ -775,6 +791,7 @@ QString ProcessTreeModel::columnHeader(Column col)
         case ColUser:     return tr("User");
         case ColState:    return tr("State");
         case ColCpu:      return tr("CPU %");
+        case ColMemPss:   return tr("MEM PSS");
         case ColMemRss:   return tr("MEM RES");
         case ColMemVirt:  return tr("MEM VIRT");
         case ColMemShared:return tr("MEM SHR");

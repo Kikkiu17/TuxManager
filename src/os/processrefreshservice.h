@@ -44,6 +44,7 @@ namespace OS
                        bool includeKernelTasks,
                        bool includeOtherUsers,
                        bool collectIOMetrics,
+                       bool collectPssMetrics,
                        bool isSuperuser,
                        uint effectiveUid,
                        uint myUid);
@@ -52,15 +53,28 @@ namespace OS
             void fetched(int consumer, quint64 token, const QList<Process> &processes);
 
         private:
-            QHash<pid_t, quint64>   m_prevTicks;
-            QHash<pid_t, quint64>   m_prevIoReadBytes;
-            QHash<pid_t, quint64>   m_prevIoWriteBytes;
-            QHash<QString, quint64> m_prevDiskIoMs;
-            quint64                 m_prevCpuTotalTicks { 0 };
-            QElapsedTimer           m_prevIoSampleTimer;
-            int                     m_numCpus { 1 };
+            struct PssCacheEntry
+            {
+                quint64 PssKb           { 0 };
+                quint64 LastRssKb       { 0 };
+                quint64 LastSharedKb    { 0 };
+                quint64 LastSampledTick { 0 };
+                bool    PermissionDenied{ false };
+            };
 
+            QHash<pid_t, quint64>                  m_prevTicks;
+            QHash<pid_t, quint64>                  m_prevIoReadBytes;
+            QHash<pid_t, quint64>                  m_prevIoWriteBytes;
+            QHash<QString, quint64>                m_prevDiskIoMs;
+            QHash<Process::Identity, PssCacheEntry> m_pssCache;
+            quint64                                m_prevCpuTotalTicks { 0 };
+            quint64                                m_pssTick { 0 };
+            QElapsedTimer                          m_prevIoSampleTimer;
+            int                                    m_numCpus { 1 };
+
+            void updatePssMetrics(QList<Process> &processes, bool isSuperuser, uid_t effectiveUid);
             void flushIOMetrics();
+            void flushPssCache();
     };
 
     class ProcessRefreshService : public QObject
@@ -85,6 +99,7 @@ namespace OS
                                 bool includeKernelTasks,
                                 bool includeOtherUsers,
                                 bool collectIOMetrics,
+                                bool collectPssMetrics,
                                 bool isSuperuser,
                                 uint effectiveUid,
                                 uint myUid);

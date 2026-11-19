@@ -20,7 +20,7 @@
 #define GLOBALS_H
 
 #ifndef TUX_MANAGER_VERSION_STRING
-#define TUX_MANAGER_VERSION_STRING     "1.2.1"
+#define TUX_MANAGER_VERSION_STRING     "1.2.2"
 #endif
 #define TUX_MANAGER_PRODUCT_NAME       "TuxManager"
 

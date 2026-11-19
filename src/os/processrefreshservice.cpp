@@ -20,6 +20,11 @@
 
 #include "proc.h"
 
+#include <QPair>
+#include <QSet>
+#include <QVector>
+
+#include <algorithm>
 #include <unistd.h>
 #include <utility>
 
@@ -37,6 +42,7 @@ void ProcessRefreshWorker::fetch(int consumer,
                                  bool includeKernelTasks,
                                  bool includeOtherUsers,
                                  bool collectIOMetrics,
+                                 bool collectPssMetrics,
                                  bool isSuperuser,
                                  uint effectiveUid,
                                  uint myUid)
@@ -51,10 +57,20 @@ void ProcessRefreshWorker::fetch(int consumer,
     opts.IncludeOtherUsers = includeOtherUsers;
     opts.MyUID = static_cast<uid_t>(myUid);
     opts.CollectIOMetrics = collectIOMetrics;
+    opts.CollectPssMetrics = false; // Sampled incrementally via delta-cached updatePssMetrics()
     opts.IsSuperuser = isSuperuser;
     opts.EffectiveUID = static_cast<uid_t>(effectiveUid);
 
     QList<Process> fresh = Process::LoadAll(opts);
+
+    const bool isProcessConsumer = (consumer == static_cast<int>(ProcessRefreshService::Consumer::Processes));
+    if (collectPssMetrics)
+    {
+        this->updatePssMetrics(fresh, isSuperuser, static_cast<uid_t>(effectiveUid));
+    } else if (isProcessConsumer)
+    {
+        this->flushPssCache();
+    }
 
     if (periodJiffies > 0)
     {
@@ -72,7 +88,6 @@ void ProcessRefreshWorker::fetch(int consumer,
         }
     }
 
-    const bool isProcessConsumer = (consumer == static_cast<int>(ProcessRefreshService::Consumer::Processes));
     const bool handleIo = collectIOMetrics && isProcessConsumer;
     const QHash<QString, quint64> currentDiskIoMs = handleIo ? Proc::ReadDiskIoMs() : QHash<QString, quint64>();
 
@@ -175,12 +190,175 @@ void ProcessRefreshWorker::fetch(int consumer,
     emit fetched(consumer, token, fresh);
 }
 
+void ProcessRefreshWorker::updatePssMetrics(QList<Process> &processes, bool isSuperuser, uid_t effectiveUid)
+{
+    static constexpr quint64 PSS_MIN_DELTA_KB       = 256ULL;
+    static constexpr quint64 PSS_MAX_DELTA_KB       = 4096ULL;
+    static constexpr quint64 PSS_STALE_TICKS        = 15ULL;
+    static constexpr qint64  PSS_UNCACHED_BUDGET_MS = 60;
+    static constexpr qint64  PSS_DIRTY_BUDGET_MS    = 25;
+    static constexpr qint64  PSS_STALE_BUDGET_MS    = 8;
+    static constexpr int     PSS_MAX_STALE_PER_TICK = 10;
+
+    ++this->m_pssTick;
+
+    QSet<Process::Identity> liveIdentities;
+    liveIdentities.reserve(processes.size());
+
+    QVector<int> uncachedIndices;
+    QVector<QPair<int, quint64>> dirtyIndices;
+    QVector<QPair<int, quint64>> staleIndices;
+
+    for (int i = 0; i < processes.size(); ++i)
+    {
+        Process &proc = processes[i];
+        const Process::Identity id = proc.GetIdentity();
+        liveIdentities.insert(id);
+
+        if (proc.IsKernelThread || proc.VMRssKb == 0)
+        {
+            proc.MemoryPssKb = 0;
+            proc.MemoryPssExact = true;
+            continue;
+        }
+
+        // Default fallback when smaps_rollup is unreadable or deferred by the per-tick budget.
+        proc.MemoryPssKb = proc.PrivateRssKb();
+        proc.MemoryPssExact = false;
+
+        if (!isSuperuser && proc.UID != effectiveUid)
+            continue;
+
+        const auto it = this->m_pssCache.constFind(id);
+        if (it == this->m_pssCache.cend())
+        {
+            uncachedIndices.append(i);
+            continue;
+        }
+
+        const PssCacheEntry &entry = it.value();
+        if (entry.PermissionDenied)
+            continue;
+
+        // Clamp cached PSS to current RSS so PSS never exceeds RSS if budget defers re-sampling.
+        proc.MemoryPssKb = qMin(entry.PssKb, proc.VMRssKb);
+        proc.MemoryPssExact = true;
+
+        const quint64 rssDelta = (proc.VMRssKb >= entry.LastRssKb)
+                                 ? (proc.VMRssKb - entry.LastRssKb)
+                                 : (entry.LastRssKb - proc.VMRssKb);
+        const quint64 sharedDelta = (proc.SharedKb >= entry.LastSharedKb)
+                                    ? (proc.SharedKb - entry.LastSharedKb)
+                                    : (entry.LastSharedKb - proc.SharedKb);
+        const quint64 thresholdKb = qBound(PSS_MIN_DELTA_KB, proc.VMRssKb / 100ULL, PSS_MAX_DELTA_KB);
+
+        if (rssDelta >= thresholdKb || sharedDelta >= thresholdKb || proc.VMRssKb < entry.PssKb)
+        {
+            dirtyIndices.append({ i, qMax(rssDelta, sharedDelta) });
+        } else if (this->m_pssTick >= entry.LastSampledTick && (this->m_pssTick - entry.LastSampledTick) >= PSS_STALE_TICKS)
+        {
+            staleIndices.append({ i, entry.LastSampledTick });
+        }
+    }
+
+    // Prioritize heaviest uncached processes and largest RSS/Shared changes first.
+    std::sort(uncachedIndices.begin(), uncachedIndices.end(), [&processes](int a, int b)
+    {
+        return processes.at(a).VMRssKb > processes.at(b).VMRssKb;
+    });
+    std::sort(dirtyIndices.begin(), dirtyIndices.end(), [](const QPair<int, quint64> &a, const QPair<int, quint64> &b)
+    {
+        return a.second > b.second;
+    });
+    std::sort(staleIndices.begin(), staleIndices.end(), [](const QPair<int, quint64> &a, const QPair<int, quint64> &b)
+    {
+        return a.second < b.second;
+    });
+
+    auto sampleOne = [&](int idx)
+    {
+        Process &proc = processes[idx];
+        const Process::Identity id = proc.GetIdentity();
+        quint64 pssKb = 0;
+        bool permissionDenied = false;
+
+        if (Process::LoadPss(proc.PID, pssKb, &permissionDenied))
+        {
+            proc.MemoryPssKb = pssKb;
+            proc.MemoryPssExact = true;
+
+            PssCacheEntry entry;
+            entry.PssKb = pssKb;
+            entry.LastRssKb = proc.VMRssKb;
+            entry.LastSharedKb = proc.SharedKb;
+            entry.LastSampledTick = this->m_pssTick;
+            entry.PermissionDenied = false;
+            this->m_pssCache.insert(id, entry);
+        } else if (permissionDenied)
+        {
+            proc.MemoryPssKb = proc.PrivateRssKb();
+            proc.MemoryPssExact = false;
+
+            PssCacheEntry entry;
+            entry.LastRssKb = proc.VMRssKb;
+            entry.LastSharedKb = proc.SharedKb;
+            entry.LastSampledTick = this->m_pssTick;
+            entry.PermissionDenied = true;
+            this->m_pssCache.insert(id, entry);
+        }
+    };
+
+    QElapsedTimer budgetTimer;
+    budgetTimer.start();
+    int sampledPriority = 0;
+
+    for (int idx : std::as_const(uncachedIndices))
+    {
+        if (sampledPriority > 0 && budgetTimer.elapsed() >= PSS_UNCACHED_BUDGET_MS)
+            break;
+        sampleOne(idx);
+        ++sampledPriority;
+    }
+
+    for (const QPair<int, quint64> &item : std::as_const(dirtyIndices))
+    {
+        if (sampledPriority > 0 && budgetTimer.elapsed() >= PSS_DIRTY_BUDGET_MS)
+            break;
+        sampleOne(item.first);
+        ++sampledPriority;
+    }
+
+    int sampledStale = 0;
+    for (const QPair<int, quint64> &item : std::as_const(staleIndices))
+    {
+        if (sampledStale >= PSS_MAX_STALE_PER_TICK || budgetTimer.elapsed() >= PSS_STALE_BUDGET_MS)
+            break;
+        sampleOne(item.first);
+        ++sampledStale;
+    }
+
+    // Prune exited processes from the PSS cache.
+    for (auto it = this->m_pssCache.begin(); it != this->m_pssCache.end(); )
+    {
+        if (!liveIdentities.contains(it.key()))
+            it = this->m_pssCache.erase(it);
+        else
+            ++it;
+    }
+}
+
 void ProcessRefreshWorker::flushIOMetrics()
 {
     this->m_prevIoReadBytes.clear();
     this->m_prevIoWriteBytes.clear();
     this->m_prevDiskIoMs.clear();
     this->m_prevIoSampleTimer.invalidate();
+}
+
+void ProcessRefreshWorker::flushPssCache()
+{
+    this->m_pssCache.clear();
+    this->m_pssTick = 0;
 }
 
 ProcessRefreshService::ProcessRefreshService(QObject *parent)
@@ -219,6 +397,7 @@ void ProcessRefreshService::RequestSnapshot(Consumer consumer, quint64 token, co
                         options.IncludeKernelTasks,
                         options.IncludeOtherUsers,
                         options.CollectIOMetrics,
+                        options.CollectPssMetrics,
                         options.IsSuperuser,
                         static_cast<uint>(options.EffectiveUID),
                         static_cast<uint>(options.MyUID));

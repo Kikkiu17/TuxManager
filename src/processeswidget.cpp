@@ -162,12 +162,15 @@ bool ProcessesWidget::selectProcessInTree(pid_t pid)
 
 void ProcessesWidget::setupTable()
 {
-    static constexpr int PROCESS_COLUMN_SCHEMA_VERSION = 3;
+    static constexpr int PROCESS_COLUMN_SCHEMA_VERSION = 4;
     const int savedProcessColumnSchemaVersion = CFG->ProcessColumnSchemaVersion;
-    const bool resetProcessHeaderState = savedProcessColumnSchemaVersion < 1;
-    const bool migrateProcessNameFirstLayout = savedProcessColumnSchemaVersion < 3;
-    if (resetProcessHeaderState && CFG->ProcessListSortColumn > OS::ProcessModel::ColMemVirt)
+    const bool resetProcessHeaderState = savedProcessColumnSchemaVersion < 4;
+    const bool migrateProcessNameFirstLayout = resetProcessHeaderState || (savedProcessColumnSchemaVersion < 3);
+    if (savedProcessColumnSchemaVersion < 1 && CFG->ProcessListSortColumn > 6)
         CFG->ProcessListSortColumn += 3;
+    if (savedProcessColumnSchemaVersion < 4 && CFG->ProcessListSortColumn > OS::ProcessModel::ColMemPss)
+        CFG->ProcessListSortColumn += 1;
+    CFG->ProcessListSortColumn = qBound(0, CFG->ProcessListSortColumn, OS::ProcessModel::ColCount - 1);
 
     this->m_proxy->setSourceModel(this->m_model);
     this->m_treeProxy->setSourceModel(this->m_treeModel);
@@ -234,6 +237,7 @@ void ProcessesWidget::setupTable()
     tv->setColumnWidth(OS::ProcessModel::ColUser,     90);
     tv->setColumnWidth(OS::ProcessModel::ColState,    90);
     tv->setColumnWidth(OS::ProcessModel::ColCpu,      65);
+    tv->setColumnWidth(OS::ProcessModel::ColMemPss,   80);
     tv->setColumnWidth(OS::ProcessModel::ColMemRss,   80);
     tv->setColumnWidth(OS::ProcessModel::ColMemVirt,  80);
     tv->setColumnWidth(OS::ProcessModel::ColMemShared, 80);
@@ -248,6 +252,7 @@ void ProcessesWidget::setupTable()
     tv->setColumnWidth(OS::ProcessModel::ColPriority, 65);
     tv->setColumnWidth(OS::ProcessModel::ColNice,     50);
     // Hide less-common columns by default
+    hv->hideSection(OS::ProcessModel::ColMemRss);
     hv->hideSection(OS::ProcessModel::ColMemVirt);
     hv->hideSection(OS::ProcessModel::ColMemShared);
     hv->hideSection(OS::ProcessModel::ColMemText);
@@ -303,6 +308,7 @@ void ProcessesWidget::setupTable()
     this->m_treeView->setColumnWidth(OS::ProcessTreeModel::ColUser, 90);
     this->m_treeView->setColumnWidth(OS::ProcessTreeModel::ColState, 90);
     this->m_treeView->setColumnWidth(OS::ProcessTreeModel::ColCpu, 65);
+    this->m_treeView->setColumnWidth(OS::ProcessTreeModel::ColMemPss, 80);
     this->m_treeView->setColumnWidth(OS::ProcessTreeModel::ColMemRss, 80);
     this->m_treeView->setColumnWidth(OS::ProcessTreeModel::ColMemVirt, 80);
     this->m_treeView->setColumnWidth(OS::ProcessTreeModel::ColMemShared, 80);
@@ -316,6 +322,7 @@ void ProcessesWidget::setupTable()
     this->m_treeView->setColumnWidth(OS::ProcessTreeModel::ColThreads, 65);
     this->m_treeView->setColumnWidth(OS::ProcessTreeModel::ColPriority, 65);
     this->m_treeView->setColumnWidth(OS::ProcessTreeModel::ColNice, 50);
+    this->m_treeView->setColumnHidden(OS::ProcessTreeModel::ColMemRss, true);
     this->m_treeView->setColumnHidden(OS::ProcessTreeModel::ColMemVirt, true);
     this->m_treeView->setColumnHidden(OS::ProcessTreeModel::ColMemShared, true);
     this->m_treeView->setColumnHidden(OS::ProcessTreeModel::ColMemText, true);
@@ -344,6 +351,7 @@ void ProcessesWidget::setupTable()
         this->saveTreeHeaderState();
     }
     this->updateIOMetricsEnabledState(false);
+    this->updatePssMetricsEnabledState(false);
     connect(this->m_treeView, &QTreeView::customContextMenuRequested, this, &ProcessesWidget::onTreeContextMenu);
 
     // Del keyboard shortcut to terminate process
@@ -495,6 +503,7 @@ void ProcessesWidget::startRefresh()
     options.IncludeOtherUsers = this->m_proxy->ShowOtherUsersProcs;
     options.MyUID = ::getuid();
     options.CollectIOMetrics = CFG->IOMetricsEnabled;
+    options.CollectPssMetrics = CFG->PssMetricsEnabled;
     options.IsSuperuser = CFG->IsSuperuser;
     options.EffectiveUID = CFG->EUID;
 
@@ -609,6 +618,7 @@ void ProcessesWidget::showHeaderContextMenu(QHeaderView *header, int columnCount
     this->saveTableHeaderState();
     this->saveTreeHeaderState();
     this->updateIOMetricsEnabledState();
+    this->updatePssMetricsEnabledState();
 }
 
 void ProcessesWidget::saveTableHeaderState() const
@@ -685,6 +695,31 @@ void ProcessesWidget::updateIOMetricsEnabledState(bool triggerImmediateRefresh)
     const bool changed = (CFG->IOMetricsEnabled != enabled);
 
     CFG->IOMetricsEnabled = enabled;
+
+    if (changed && enabled && triggerImmediateRefresh && this->m_active && !CFG->RefreshPaused && !this->m_tableContextMenuOpen)
+        this->startRefresh();
+}
+
+bool ProcessesWidget::anyPssMetricsColumnVisible() const
+{
+    const QHeaderView *tableHeader = this->ui && this->ui->tableView ? this->ui->tableView->horizontalHeader() : nullptr;
+    const QHeaderView *treeHeader = this->m_treeView ? this->m_treeView->header() : nullptr;
+    if (!tableHeader && !treeHeader)
+        return false;
+
+    if (tableHeader && !tableHeader->isSectionHidden(OS::ProcessModel::ColMemPss))
+        return true;
+    if (treeHeader && !treeHeader->isSectionHidden(OS::ProcessTreeModel::ColMemPss))
+        return true;
+    return false;
+}
+
+void ProcessesWidget::updatePssMetricsEnabledState(bool triggerImmediateRefresh)
+{
+    const bool enabled = this->anyPssMetricsColumnVisible();
+    const bool changed = (CFG->PssMetricsEnabled != enabled);
+
+    CFG->PssMetricsEnabled = enabled;
 
     if (changed && enabled && triggerImmediateRefresh && this->m_active && !CFG->RefreshPaused && !this->m_tableContextMenuOpen)
         this->startRefresh();

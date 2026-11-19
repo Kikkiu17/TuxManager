@@ -49,6 +49,8 @@ namespace
                && lhs.Nice == rhs.Nice
                && lhs.Threads == rhs.Threads
                && lhs.VMRssKb == rhs.VMRssKb
+               && lhs.MemoryPssKb == rhs.MemoryPssKb
+               && lhs.MemoryPssExact == rhs.MemoryPssExact
                && lhs.vmSizeKb == rhs.vmSizeKb
                && lhs.SharedKb == rhs.SharedKb
                && lhs.TextKb == rhs.TextKb
@@ -122,6 +124,7 @@ QVariant ProcessModel::data(const QModelIndex &index, int role) const
             case ColUser:     return proc.User;
             case ColState:    return Process::GetStateString(proc.State);
             case ColCpu:      return QString::number(proc.CPUPercent, 'f', 1) + " %";
+            case ColMemPss:   return Misc::FormatKiB(proc.MemoryPssKb, 0);
             case ColMemRss:   return Misc::FormatKiB(proc.VMRssKb, 0);
             case ColMemVirt:  return Misc::FormatKiB(proc.vmSizeKb, 0);
             case ColMemShared:return Misc::FormatKiB(proc.SharedKb, 0);
@@ -156,6 +159,7 @@ QVariant ProcessModel::data(const QModelIndex &index, int role) const
         {
             case ColPid:      return static_cast<qlonglong>(proc.PID);
             case ColCpu:      return proc.CPUPercent;
+            case ColMemPss:   return static_cast<qulonglong>(proc.MemoryPssKb);
             case ColMemRss:   return static_cast<qulonglong>(proc.VMRssKb);
             case ColMemVirt:  return static_cast<qulonglong>(proc.vmSizeKb);
             case ColMemShared:return static_cast<qulonglong>(proc.SharedKb);
@@ -194,6 +198,7 @@ QVariant ProcessModel::data(const QModelIndex &index, int role) const
         {
             case ColPid:
             case ColCpu:
+            case ColMemPss:
             case ColMemRss:
             case ColMemVirt:
             case ColMemShared:
@@ -211,6 +216,12 @@ QVariant ProcessModel::data(const QModelIndex &index, int role) const
             default:
                 return QVariant(Qt::AlignLeft | Qt::AlignVCenter);
         }
+    }
+
+    if (role == Qt::ToolTipRole)
+    {
+        if (static_cast<Column>(index.column()) == ColMemPss && !proc.MemoryPssExact && proc.VMRssKb > 0)
+            return tr("Estimated from private RSS (insufficient permissions or pending PSS sample)");
     }
 
     return {};
@@ -336,6 +347,7 @@ QList<Process> ProcessModel::RefreshSnapshot()
     opts.IncludeOtherUsers  = this->m_showOtherUsersProcs;
     opts.MyUID              = this->m_myUid;
     opts.CollectIOMetrics   = this->m_ioMetricsEnabled;
+    opts.CollectPssMetrics  = CFG->PssMetricsEnabled;
     opts.IsSuperuser        = CFG->IsSuperuser;
     opts.EffectiveUID       = CFG->EUID;
     QList<Process> fresh = Process::LoadAll(opts);
@@ -485,6 +497,7 @@ QString ProcessModel::columnHeader(Column col)
         case ColUser:     return tr("User");
         case ColState:    return tr("State");
         case ColCpu:      return tr("CPU %");
+        case ColMemPss:   return tr("MEM PSS");
         case ColMemRss:   return tr("MEM RES");
         case ColMemVirt:  return tr("MEM VIRT");
         case ColMemShared:return tr("MEM SHR");
