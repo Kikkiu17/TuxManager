@@ -49,7 +49,7 @@ class UsersWidget : public QWidget
 
     private slots:
         void onTimerTick();
-        void onRefreshFinished(int consumer, quint64 token, const QList<OS::Process> &processes);
+        void onRefreshFinished(int consumer, quint64 token, const QList<OS::Process> &processes, int totalTasks, qlonglong totalThreads);
         void onContextMenu(const QPoint &pos);
 
     private:

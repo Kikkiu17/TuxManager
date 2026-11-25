@@ -21,6 +21,8 @@
 #include "configuration.h"
 #include "updater.h"
 
+#include <QGuiApplication>
+#include <QScreen>
 #include <QTimer>
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
@@ -47,10 +49,39 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     this->ui->sensorsLayout->addWidget(this->m_sensorsWidget);
 
     // Restore previous window layout
+    bool geometryRestored = false;
     if (!CFG->WindowGeometry.isEmpty())
-        this->restoreGeometry(CFG->WindowGeometry);
+        geometryRestored = this->restoreGeometry(CFG->WindowGeometry);
     if (!CFG->WindowState.isEmpty())
         this->restoreState(CFG->WindowState);
+
+    // Clamp restored/default window geometry inside the available screen area.
+    if (!this->isMaximized() && !this->isFullScreen())
+    {
+        QScreen *screen = geometryRestored
+                          ? QGuiApplication::screenAt(this->frameGeometry().center())
+                          : nullptr;
+        if (!screen)
+            screen = QGuiApplication::primaryScreen();
+
+        if (screen)
+        {
+            const QRect available = screen->availableGeometry();
+            const QSize maxSize(qMax(1, available.width() * 9 / 10),
+                                qMax(1, available.height() * 9 / 10));
+            const QSize boundedSize = this->size().boundedTo(maxSize);
+            const bool sizeChanged = (boundedSize != this->size());
+            if (sizeChanged)
+                this->resize(boundedSize);
+
+            if (!geometryRestored || sizeChanged || !available.contains(this->frameGeometry()))
+            {
+                this->move(available.left() + (available.width() - this->width()) / 2,
+                           available.top() + (available.height() - this->height()) / 2);
+            }
+        }
+    }
+
     this->ui->tabWidget->setCurrentIndex(CFG->ActiveTab);
     this->updateTabActivity(this->ui->tabWidget->currentIndex());
 

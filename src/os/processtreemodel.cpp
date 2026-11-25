@@ -23,9 +23,27 @@
 
 #include <QSet>
 #include <algorithm>
+#include <unistd.h>
 
 namespace
 {
+    int stateActivityRank(char state)
+    {
+        switch (state)
+        {
+            case 'R': return 9;
+            case 'D': return 8;
+            case 'T': return 7;
+            case 't': return 6;
+            case 'Z': return 5;
+            case 'X': return 4;
+            case 'P': return 3;
+            case 'S': return 2;
+            case 'I': return 1;
+            default:  return 0;
+        }
+    }
+
     QString extractAppCGroup(const QString &cgroup)
     {
         if (cgroup.isEmpty())
@@ -173,7 +191,7 @@ namespace
             QStringLiteral("bash"),
             QStringLiteral("sh")
         };
-        return wrappers.contains(comm);
+        return wrappers.contains(comm) || comm.startsWith(QLatin1String("steam-runtime-l"));
     }
 
     bool isLauncherOrInfra(pid_t pid, const QString &comm)
@@ -203,6 +221,7 @@ using namespace OS;
 
 ProcessTreeModel::ProcessTreeModel(QObject *parent) : QAbstractItemModel(parent), m_root(new Node())
 {
+    this->m_numCpus = qMax(1, static_cast<int>(::sysconf(_SC_NPROCESSORS_ONLN)));
 }
 
 ProcessTreeModel::~ProcessTreeModel()
@@ -221,7 +240,7 @@ QModelIndex ProcessTreeModel::index(int row, int column, const QModelIndex &pare
     if (row >= parentNode->children.size())
         return {};
 
-    return createIndex(row, column, parentNode->children.at(row));
+    return this->createIndex(row, column, parentNode->children.at(row));
 }
 
 QModelIndex ProcessTreeModel::parent(const QModelIndex &child) const
@@ -238,7 +257,7 @@ QModelIndex ProcessTreeModel::parent(const QModelIndex &child) const
     const int row = grandParent->children.indexOf(parentNode);
     if (row < 0)
         return {};
-    return createIndex(row, 0, parentNode);
+    return this->createIndex(row, 0, parentNode);
 }
 
 int ProcessTreeModel::rowCount(const QModelIndex &parent) const
@@ -276,11 +295,18 @@ QVariant ProcessTreeModel::data(const QModelIndex &index, int role) const
     {
         switch (static_cast<Column>(index.column()))
         {
-            case ColPid:      return proc.PID;
+            case ColPid:
+                if (node->isGroup)
+                    return QString();
+                return proc.PID;
             case ColName:     return proc.Name;
             case ColUser:     return proc.User;
             case ColState:    return Process::GetStateString(proc.State);
-            case ColCpu:      return QString::number(proc.CPUPercent, 'f', 1) + " %";
+            case ColCpu:
+            {
+                const double cpuPct = proc.CPUPercent * (this->m_cpuPerCore ? static_cast<double>(this->m_numCpus) : 1.0);
+                return QString::number(cpuPct, 'f', 1) + " %";
+            }
             case ColMemPss:   return Misc::FormatKiB(proc.MemoryPssKb, 0);
             case ColMemRss:   return Misc::FormatKiB(proc.VMRssKb, 0);
             case ColMemVirt:  return Misc::FormatKiB(proc.vmSizeKb, 0);
@@ -290,9 +316,19 @@ QVariant ProcessTreeModel::data(const QModelIndex &index, int role) const
             case ColDisk:
                 if (proc.IOPermissionDenied || !proc.IOTotalsAvailable)
                     return QString("?");
-                return proc.IORatesAvailable ? (QString::number(proc.DiskPercent, 'f', 1) + " %") : tr("measuring...");
-            case ColIoReads:  return proc.IOTotalsAvailable ? Misc::FormatBytes(proc.IOReadBytes, 0) : QString("?");
-            case ColIoWrites: return proc.IOTotalsAvailable ? Misc::FormatBytes(proc.IOWriteBytes, 0) : QString("?");
+                if (!proc.IORatesAvailable)
+                    return tr("measuring...");
+                if (proc.DiskPercent < 0.0)
+                    return QString("?");
+                return QString::number(proc.DiskPercent, 'f', 1) + " %";
+            case ColIoReads:
+                return (!proc.IOPermissionDenied && proc.IOTotalsAvailable)
+                       ? Misc::FormatBytes(proc.IOReadBytes, 0)
+                       : QString("?");
+            case ColIoWrites:
+                return (!proc.IOPermissionDenied && proc.IOTotalsAvailable)
+                       ? Misc::FormatBytes(proc.IOWriteBytes, 0)
+                       : QString("?");
             case ColIoReadsPerSec:
                 if (proc.IOPermissionDenied || !proc.IOTotalsAvailable)
                     return QString("?");
@@ -302,8 +338,14 @@ QVariant ProcessTreeModel::data(const QModelIndex &index, int role) const
                     return QString("?");
                 return proc.IORatesAvailable ? Misc::FormatBytesPerSecond(proc.IOWriteBps) : tr("measuring...");
             case ColThreads:  return proc.Threads;
-            case ColPriority: return proc.Priority;
-            case ColNice:     return proc.Nice;
+            case ColPriority:
+                if (node->isGroup)
+                    return QString();
+                return proc.Priority;
+            case ColNice:
+                if (node->isGroup)
+                    return QString();
+                return proc.Nice;
             case ColCmdline:  return proc.CmdLine;
             default: break;
         }
@@ -314,7 +356,11 @@ QVariant ProcessTreeModel::data(const QModelIndex &index, int role) const
         switch (static_cast<Column>(index.column()))
         {
             case ColPid:      return static_cast<qlonglong>(proc.PID);
-            case ColCpu:      return proc.CPUPercent;
+            case ColCpu:
+            {
+                const double cpuPct = proc.CPUPercent * (this->m_cpuPerCore ? static_cast<double>(this->m_numCpus) : 1.0);
+                return cpuPct;
+            }
             case ColMemPss:   return static_cast<qulonglong>(proc.MemoryPssKb);
             case ColMemRss:   return static_cast<qulonglong>(proc.VMRssKb);
             case ColMemVirt:  return static_cast<qulonglong>(proc.vmSizeKb);
@@ -322,29 +368,29 @@ QVariant ProcessTreeModel::data(const QModelIndex &index, int role) const
             case ColMemText:  return static_cast<qulonglong>(proc.TextKb);
             case ColMemData:  return static_cast<qulonglong>(proc.DataKb);
             case ColDisk:
-                return proc.IORatesAvailable
-                       ? QVariant::fromValue(proc.DiskPercent)
-                       : QVariant::fromValue(-1.0);
+                if (proc.IOPermissionDenied || !proc.IOTotalsAvailable || !proc.IORatesAvailable || proc.DiskPercent < 0.0)
+                    return QVariant::fromValue(-1.0);
+                return QVariant::fromValue(proc.DiskPercent);
             case ColIoReads:
-                return proc.IOTotalsAvailable
+                return (!proc.IOPermissionDenied && proc.IOTotalsAvailable)
                        ? QVariant::fromValue(static_cast<qlonglong>(proc.IOReadBytes))
                        : QVariant::fromValue(static_cast<qlonglong>(-1));
             case ColIoWrites:
-                return proc.IOTotalsAvailable
+                return (!proc.IOPermissionDenied && proc.IOTotalsAvailable)
                        ? QVariant::fromValue(static_cast<qlonglong>(proc.IOWriteBytes))
                        : QVariant::fromValue(static_cast<qlonglong>(-1));
             case ColIoReadsPerSec:
-                return proc.IORatesAvailable
+                return (!proc.IOPermissionDenied && proc.IOTotalsAvailable && proc.IORatesAvailable)
                        ? QVariant::fromValue(proc.IOReadBps)
                        : QVariant::fromValue(-1.0);
             case ColIoWritesPerSec:
-                return proc.IORatesAvailable
+                return (!proc.IOPermissionDenied && proc.IOTotalsAvailable && proc.IORatesAvailable)
                        ? QVariant::fromValue(proc.IOWriteBps)
                        : QVariant::fromValue(-1.0);
             case ColThreads:  return proc.Threads;
             case ColPriority: return proc.Priority;
             case ColNice:     return proc.Nice;
-            default:          return data(index, Qt::DisplayRole);
+            default:          return this->data(index, Qt::DisplayRole);
         }
     }
 
@@ -352,6 +398,7 @@ QVariant ProcessTreeModel::data(const QModelIndex &index, int role) const
     {
         switch (static_cast<Column>(index.column()))
         {
+            case ColPid:
             case ColCpu:
             case ColMemPss:
             case ColMemRss:
@@ -375,8 +422,28 @@ QVariant ProcessTreeModel::data(const QModelIndex &index, int role) const
 
     if (role == Qt::ToolTipRole)
     {
-        if (static_cast<Column>(index.column()) == ColMemPss && !proc.MemoryPssExact && proc.VMRssKb > 0)
-            return tr("Estimated from private RSS (insufficient permissions or pending PSS sample)");
+        switch (static_cast<Column>(index.column()))
+        {
+            case ColMemPss:
+                if (!proc.MemoryPssExact && proc.VMRssKb > 0)
+                    return tr("Estimated from private RSS (insufficient permissions or pending PSS sample)");
+                break;
+            case ColDisk:
+                if (proc.IOPermissionDenied)
+                    return tr("Insufficient permissions to read process I/O statistics");
+                if (proc.IOTotalsAvailable && proc.IORatesAvailable && proc.DiskPercent < 0.0)
+                    return tr("Disk utilization unavailable (no block device statistics)");
+                break;
+            case ColIoReads:
+            case ColIoWrites:
+            case ColIoReadsPerSec:
+            case ColIoWritesPerSec:
+                if (proc.IOPermissionDenied)
+                    return tr("Insufficient permissions to read process I/O statistics");
+                break;
+            default:
+                break;
+        }
     }
 
     return {};
@@ -384,11 +451,21 @@ QVariant ProcessTreeModel::data(const QModelIndex &index, int role) const
 
 QVariant ProcessTreeModel::headerData(int section, Qt::Orientation orientation, int role) const
 {
-    if (orientation != Qt::Horizontal || role != Qt::DisplayRole)
+    if (orientation != Qt::Horizontal || section < 0 || section >= ColCount)
         return {};
-    if (section < 0 || section >= ColCount)
-        return {};
-    return columnHeader(static_cast<Column>(section));
+
+    const Column col = static_cast<Column>(section);
+    if (role == Qt::DisplayRole)
+        return columnHeader(col);
+
+    if (role == Qt::ToolTipRole && col == ColCpu)
+    {
+        if (this->m_cpuPerCore)
+            return tr("Per-core CPU usage (0–%1% across %2 logical CPUs)").arg(100 * this->m_numCpus).arg(this->m_numCpus);
+        return tr("Total CPU usage across all cores (0–100%)");
+    }
+
+    return {};
 }
 
 Qt::ItemFlags ProcessTreeModel::flags(const QModelIndex &index) const
@@ -407,7 +484,7 @@ void ProcessTreeModel::SetMode(Mode mode)
 
 void ProcessTreeModel::SetProcesses(const QList<Process> &processes)
 {
-    beginResetModel();
+    this->beginResetModel();
     freeNode(this->m_root);
     this->m_root = new Node();
     this->m_byPid.clear();
@@ -422,7 +499,7 @@ void ProcessTreeModel::SetProcesses(const QList<Process> &processes)
         this->buildGroupedTree(processes);
     }
 
-    endResetModel();
+    this->endResetModel();
 }
 
 void ProcessTreeModel::buildHierarchyTree(const QList<Process> &processes)
@@ -442,7 +519,20 @@ void ProcessTreeModel::buildHierarchyTree(const QList<Process> &processes)
         Node *parent = this->m_root;
         const pid_t ppid = node->process.PPID;
         if (ppid > 0 && ppid != node->process.PID && this->m_byPid.contains(ppid))
-            parent = this->m_byPid.value(ppid);
+        {
+            Node *candidate = this->m_byPid.value(ppid);
+            bool createsCycle = false;
+            for (Node *ancestor = candidate; ancestor && ancestor != this->m_root; ancestor = ancestor->parent)
+            {
+                if (ancestor == node)
+                {
+                    createsCycle = true;
+                    break;
+                }
+            }
+            if (!createsCycle)
+                parent = candidate;
+        }
 
         node->parent = parent;
         parent->children.append(node);
@@ -511,9 +601,12 @@ void ProcessTreeModel::buildGroupedTree(const QList<Process> &processes)
         // Check if this is a worker process
         if (isKnownWorkerProcess(p))
         {
+            QSet<pid_t> visited;
+            visited.insert(p.PID);
             pid_t curr = p.PPID;
-            while (curr > 1 && procByPid.contains(curr))
+            while (curr > 1 && procByPid.contains(curr) && !visited.contains(curr))
             {
+                visited.insert(curr);
                 if (pidToGroup.contains(curr))
                 {
                     int targetGid = pidToGroup.value(curr);
@@ -669,9 +762,12 @@ void ProcessTreeModel::buildGroupedTree(const QList<Process> &processes)
 
         bool anyRatesAvailable = false;
         bool anyTotalsAvailable = false;
+        bool anyValidDiskPercent = false;
         bool allPermissionDenied = true;
         bool allPssExact = true;
         int validProcCount = 0;
+        char bestState = primaryProc.State;
+        int bestStateRank = stateActivityRank(bestState);
 
         for (pid_t pid : memberPids)
         {
@@ -681,6 +777,12 @@ void ProcessTreeModel::buildGroupedTree(const QList<Process> &processes)
             if (groupNode->process.IconName.isEmpty() && !p.IconName.isEmpty())
                 groupNode->process.IconName = p.IconName;
             validProcCount++;
+            const int rank = stateActivityRank(p.State);
+            if (rank > bestStateRank)
+            {
+                bestStateRank = rank;
+                bestState = p.State;
+            }
             if (p.IORatesAvailable)
                 anyRatesAvailable = true;
             if (p.IOTotalsAvailable)
@@ -698,14 +800,29 @@ void ProcessTreeModel::buildGroupedTree(const QList<Process> &processes)
             groupNode->process.TextKb += p.TextKb;
             groupNode->process.DataKb += p.DataKb;
             groupNode->process.Threads += p.Threads;
-            groupNode->process.IOReadBytes += p.IOReadBytes;
-            groupNode->process.IOWriteBytes += p.IOWriteBytes;
-            groupNode->process.IOReadBps += p.IOReadBps;
-            groupNode->process.IOWriteBps += p.IOWriteBps;
-            groupNode->process.DiskPercent += p.DiskPercent;
+            if (p.IOTotalsAvailable)
+            {
+                groupNode->process.IOReadBytes += p.IOReadBytes;
+                groupNode->process.IOWriteBytes += p.IOWriteBytes;
+            }
+            if (p.IORatesAvailable)
+            {
+                groupNode->process.IOReadBps += p.IOReadBps;
+                groupNode->process.IOWriteBps += p.IOWriteBps;
+                if (p.DiskPercent >= 0.0)
+                {
+                    groupNode->process.DiskPercent += p.DiskPercent;
+                    anyValidDiskPercent = true;
+                }
+            }
         }
 
-        groupNode->process.DiskPercent = qMin(groupNode->process.DiskPercent, 100.0);
+        groupNode->process.State = bestState;
+        groupNode->process.CPUPercent = qMin(groupNode->process.CPUPercent, 100.0);
+        if (anyValidDiskPercent)
+            groupNode->process.DiskPercent = qMin(groupNode->process.DiskPercent, 100.0);
+        else if (anyRatesAvailable)
+            groupNode->process.DiskPercent = -1.0;
         groupNode->process.IORatesAvailable = anyRatesAvailable;
         groupNode->process.IOTotalsAvailable = anyTotalsAvailable;
         groupNode->process.IOPermissionDenied = allPermissionDenied && (validProcCount > 0);
@@ -744,17 +861,27 @@ void ProcessTreeModel::buildGroupedTree(const QList<Process> &processes)
     }
 }
 
-QModelIndex ProcessTreeModel::IndexForPid(pid_t pid) const
+QModelIndex ProcessTreeModel::indexForNode(Node *node) const
 {
-    Node *node = this->m_groupHeaders.value(pid, nullptr);
-    if (!node)
-        node = this->m_byPid.value(pid, nullptr);
     if (!node || !node->parent)
         return {};
     const int row = node->parent->children.indexOf(node);
     if (row < 0)
         return {};
-    return createIndex(row, 0, node);
+    return this->createIndex(row, 0, node);
+}
+
+QModelIndex ProcessTreeModel::IndexForPid(pid_t pid) const
+{
+    Node *node = this->m_byPid.value(pid, nullptr);
+    if (!node)
+        node = this->m_groupHeaders.value(pid, nullptr);
+    return this->indexForNode(node);
+}
+
+QModelIndex ProcessTreeModel::GroupIndexForPrimaryPid(pid_t pid) const
+{
+    return this->indexForNode(this->m_groupHeaders.value(pid, nullptr));
 }
 
 QList<pid_t> ProcessTreeModel::PidsForIndex(const QModelIndex &index) const
@@ -780,6 +907,34 @@ bool ProcessTreeModel::IsGroupIndex(const QModelIndex &index) const
 {
     Node *node = nodeFromIndex(index);
     return node && node->isGroup;
+}
+
+void ProcessTreeModel::SetCpuPerCore(bool perCore)
+{
+    if (this->m_cpuPerCore == perCore)
+        return;
+
+    this->m_cpuPerCore = perCore;
+    emit this->headerDataChanged(Qt::Horizontal, ColCpu, ColCpu);
+    this->emitCpuColumnDataChanged(QModelIndex());
+}
+
+void ProcessTreeModel::emitCpuColumnDataChanged(const QModelIndex &parent)
+{
+    const int rows = this->rowCount(parent);
+    if (rows <= 0)
+        return;
+
+    emit this->dataChanged(this->index(0, ColCpu, parent),
+                           this->index(rows - 1, ColCpu, parent),
+                           { Qt::DisplayRole, Qt::UserRole, Qt::ToolTipRole });
+
+    for (int r = 0; r < rows; ++r)
+    {
+        const QModelIndex childParent = this->index(r, 0, parent);
+        if (this->rowCount(childParent) > 0)
+            this->emitCpuColumnDataChanged(childParent);
+    }
 }
 
 QString ProcessTreeModel::columnHeader(Column col)

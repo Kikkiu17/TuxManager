@@ -28,6 +28,17 @@ namespace OS
     class Proc
     {
         public:
+            struct DiskIoSample
+            {
+                quint64 ReadBytes  { 0 };
+                quint64 WriteBytes { 0 };
+                quint64 ReadMs     { 0 };
+                quint64 WriteMs    { 0 };
+                quint64 IoMs       { 0 };
+                quint64 DiscardMs  { 0 };
+                quint64 FlushMs    { 0 };
+            };
+
             /// Read total elapsed CPU jiffies from /proc/stat (all CPUs, all states).
             /// Returns 0 on error.
             static quint64 ReadTotalCpuJiffies();
@@ -35,6 +46,10 @@ namespace OS
             /// Read disk I/O active milliseconds per base block device from /proc/diskstats.
             /// Returns map of device name (e.g. "nvme0n1", "sda") -> cumulative io_ms.
             static QHash<QString, quint64> ReadDiskIoMs();
+
+            /// Read detailed disk I/O counters per physical base block device from /proc/diskstats.
+            /// Returns map of device name (e.g. "nvme0n1", "sda") -> DiskIoSample.
+            static QHash<QString, DiskIoSample> ReadDiskIoStats();
     };
 } // namespace OS
 

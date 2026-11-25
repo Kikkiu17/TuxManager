@@ -23,6 +23,7 @@
 #include <QHash>
 #include <QMetaType>
 #include <QString>
+#include <QByteArray>
 #include <sys/types.h>
 
 namespace OS
@@ -48,6 +49,12 @@ namespace OS
                 uid_t EffectiveUID        { 0 };
             };
 
+            struct Counts
+            {
+                int       Tasks   { 0 };
+                qlonglong Threads { 0 };
+            };
+
             pid_t   PID           { 0 };
             pid_t   PPID          { 0 };
             QString Name;                     ///< Short name  (/proc/pid/comm)
@@ -71,6 +78,7 @@ namespace OS
             bool    IsKernelThread{ false };   ///< True when PF_KTHREAD flag is set in /proc/pid/stat flags field
             quint64 IOReadBytes   { 0 };      ///< Cumulative bytes read from storage since start.
             quint64 IOWriteBytes  { 0 };      ///< Cumulative bytes written to storage since start.
+            quint64 IOCancelledWriteBytes { 0 }; ///< Cumulative cancelled pagecache write bytes since start.
             double  IOReadBps     { 0.0 };    ///< Calculated externally after two samples.
             double  IOWriteBps    { 0.0 };    ///< Calculated externally after two samples.
             double  DiskPercent   { 0.0 };    ///< Calculated externally after two samples.
@@ -82,7 +90,8 @@ namespace OS
 
             /// Load a snapshot of every running process from /proc.
             static QList<Process> LoadAll();
-            static QList<Process> LoadAll(const LoadOptions &options);
+            /// Optional totals include processes excluded by LoadOptions.
+            static QList<Process> LoadAll(const LoadOptions &options, Counts *totals = nullptr);
 
             /// Human-readable description of a raw state character.
             static QString GetStateString(char state);
@@ -95,10 +104,10 @@ namespace OS
             static bool LoadPss(pid_t pid, quint64 &outPssKb, bool *outPermissionDenied = nullptr);
 
         private:
-            static bool loadOneStatAndUid(pid_t pid, Process &out);
+            static bool loadOneStatAndUid(pid_t pid, Process &out, QByteArray &commName);
             static void loadStatm(Process &proc);
             static bool loadIO(Process &proc);
-            static void loadUserAndCmdline(Process &proc);
+            static void loadUserAndCmdline(Process &proc, const QByteArray &commName);
             static void loadCGroup(Process &proc);
     };
 

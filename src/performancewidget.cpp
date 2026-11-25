@@ -33,12 +33,14 @@
 #include <QAction>
 #include <QApplication>
 #include <QFile>
+#include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QMenu>
 #include <QPalette>
 #include <QPainter>
 #include <QRegularExpression>
+#include <QScrollBar>
 #include <QSplitter>
 #include <QSplitterHandle>
 
@@ -167,7 +169,17 @@ PerformanceWidget::PerformanceWidget(QWidget *parent) : QWidget(parent), ui(new 
     {
         QWidget *detail = this->m_detailByItem.value(item, nullptr);
         if (detail)
+        {
             this->m_stack->setCurrentWidget(detail);
+            this->m_stack->updateGeometry();
+            if (this->m_detailScrollArea)
+            {
+                if (QScrollBar *vsb = this->m_detailScrollArea->verticalScrollBar())
+                    vsb->setValue(0);
+                if (QScrollBar *hsb = this->m_detailScrollArea->horizontalScrollBar())
+                    hsb->setValue(0);
+            }
+        }
         Metrics::Get()->SetProcessStatsEnabled(item == this->m_cpuItem && CFG->PerfShowCpu);
     });
     connect(this->m_sidePanel, &Perf::SidePanel::itemContextMenuRequested, this, &PerformanceWidget::onSidePanelContextMenu);
@@ -214,7 +226,16 @@ void PerformanceWidget::setupLayout()
     this->m_splitter = new PerformanceSplitter(this);
     this->m_splitter->setChildrenCollapsible(false);
     this->m_splitter->addWidget(this->m_sidePanel);
-    this->m_splitter->addWidget(this->m_stack);
+
+    this->m_detailScrollArea = new QScrollArea(this->m_splitter);
+    this->m_detailScrollArea->setFrameShape(QFrame::NoFrame);
+    this->m_detailScrollArea->setWidgetResizable(true);
+    this->m_detailScrollArea->viewport()->setBackgroundRole(QPalette::Window);
+    this->m_detailScrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    this->m_detailScrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    this->m_detailScrollArea->setWidget(this->m_stack);
+    this->m_splitter->addWidget(this->m_detailScrollArea);
+
     this->m_splitter->setStretchFactor(0, 0);
     this->m_splitter->setStretchFactor(1, 1);
 

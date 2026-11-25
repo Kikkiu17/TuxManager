@@ -26,6 +26,7 @@ using namespace OS;
 ProcessFilterProxy::ProcessFilterProxy(QObject *parent) : QSortFilterProxyModel(parent), m_myUid(::getuid())
 {
     this->setSortRole(Qt::UserRole);
+    this->setSortCaseSensitivity(Qt::CaseInsensitive);
     this->setFilterRole(Qt::DisplayRole);
     this->setFilterCaseSensitivity(Qt::CaseInsensitive);
     this->setFilterKeyColumn(-1); // search across all columns

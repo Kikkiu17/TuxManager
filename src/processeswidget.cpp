@@ -69,6 +69,7 @@ ProcessesWidget::ProcessesWidget(OS::ProcessRefreshService *processRefreshServic
     {
         this->m_proxy->setFilterFixedString(text);
         this->m_treeProxy->setFilterFixedString(text);
+        this->updateStatusBar();
     });
     connect(this->ui->runNewTaskButton, &QPushButton::clicked, this, &ProcessesWidget::runNewTask);
     connect(this->ui->openTerminalButton, &QPushButton::clicked, this, &ProcessesWidget::openTerminal);
@@ -99,7 +100,18 @@ void ProcessesWidget::ClearSearchFilter()
 
 bool ProcessesWidget::SelectProcessByPid(pid_t pid)
 {
-    return (this->m_viewMode != ViewMode::Table) ? this->selectProcessInTree(pid) : this->selectProcessInTable(pid);
+    const bool found = (this->m_viewMode != ViewMode::Table)
+                       ? this->selectProcessInTree(pid)
+                       : this->selectProcessInTable(pid);
+    if (found)
+    {
+        this->m_pendingSelectPid = 0;
+        return true;
+    }
+
+    if (this->m_refreshInFlight && pid > 0)
+        this->m_pendingSelectPid = pid;
+    return false;
 }
 
 bool ProcessesWidget::selectProcessInTable(pid_t pid)
@@ -150,11 +162,16 @@ bool ProcessesWidget::selectProcessInTree(pid_t pid)
     if (!selectionModel)
         return false;
 
+    QList<QModelIndex> ancestors;
+    for (QModelIndex anc = proxyIdx.parent(); anc.isValid(); anc = anc.parent())
+        ancestors.prepend(anc);
+    for (const QModelIndex &anc : ancestors)
+        this->m_treeView->expand(anc);
+
     selectionModel->clearSelection();
     selectionModel->select(proxyIdx, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
     selectionModel->setCurrentIndex(proxyIdx, QItemSelectionModel::NoUpdate);
     this->m_treeView->scrollTo(proxyIdx, QAbstractItemView::PositionAtCenter);
-    this->m_treeView->expand(proxyIdx.parent());
     return true;
 }
 
@@ -175,6 +192,7 @@ void ProcessesWidget::setupTable()
     this->m_proxy->setSourceModel(this->m_model);
     this->m_treeProxy->setSourceModel(this->m_treeModel);
     this->m_treeProxy->setSortRole(Qt::UserRole);
+    this->m_treeProxy->setSortCaseSensitivity(Qt::CaseInsensitive);
     this->m_treeProxy->setFilterRole(Qt::DisplayRole);
     this->m_treeProxy->setFilterCaseSensitivity(Qt::CaseInsensitive);
     this->m_treeProxy->setFilterKeyColumn(-1);
@@ -200,7 +218,6 @@ void ProcessesWidget::setupTable()
     }
 
     tv->setModel(this->m_proxy);
-    tv->sortByColumn(CFG->ProcessListSortColumn, static_cast<Qt::SortOrder>(CFG->ProcessListSortOrder));
 
     QHeaderView *hv = tv->horizontalHeader();
     hv->setSectionsMovable(true);
@@ -218,12 +235,6 @@ void ProcessesWidget::setupTable()
     connect(hv, &QHeaderView::sectionMoved, this, [this]() { this->saveTableHeaderState(); });
     connect(hv, &QHeaderView::sectionResized, this, [this]() { this->saveTableHeaderState(); });
 
-    connect(hv, &QHeaderView::sortIndicatorChanged, this, [](int column, Qt::SortOrder order)
-    {
-        CFG->ProcessListSortColumn = column;
-        CFG->ProcessListSortOrder  = static_cast<int>(order);
-    });
-
     tv->verticalHeader()->hide();
     tv->setEditTriggers(QAbstractItemView::NoEditTriggers);
     tv->setSelectionMode(QAbstractItemView::ExtendedSelection);
@@ -236,7 +247,7 @@ void ProcessesWidget::setupTable()
     tv->setColumnWidth(OS::ProcessModel::ColName,    160);
     tv->setColumnWidth(OS::ProcessModel::ColUser,     90);
     tv->setColumnWidth(OS::ProcessModel::ColState,    90);
-    tv->setColumnWidth(OS::ProcessModel::ColCpu,      65);
+    tv->setColumnWidth(OS::ProcessModel::ColCpu,      75);
     tv->setColumnWidth(OS::ProcessModel::ColMemPss,   80);
     tv->setColumnWidth(OS::ProcessModel::ColMemRss,   80);
     tv->setColumnWidth(OS::ProcessModel::ColMemVirt,  80);
@@ -273,11 +284,20 @@ void ProcessesWidget::setupTable()
         // lead both process views, then preserve any column order chosen by the user.
         hv->moveSection(hv->visualIndex(OS::ProcessModel::ColName), 0);
     }
+    const Qt::SortOrder initialSortOrder = (CFG->ProcessListSortOrder == static_cast<int>(Qt::AscendingOrder))
+                                               ? Qt::AscendingOrder
+                                               : Qt::DescendingOrder;
+    hv->setSectionResizeMode(OS::ProcessModel::ColCmdline, QHeaderView::Stretch);
+    tv->sortByColumn(CFG->ProcessListSortColumn, initialSortOrder);
+    connect(hv, &QHeaderView::sortIndicatorChanged, this, [](int column, Qt::SortOrder order)
+    {
+        CFG->ProcessListSortColumn = column;
+        CFG->ProcessListSortOrder  = static_cast<int>(order);
+    });
     this->m_tableHeaderPersistenceEnabled = true;
 
     this->m_treeView->setModel(this->m_treeProxy);
     this->m_treeView->setSortingEnabled(true);
-    this->m_treeView->sortByColumn(CFG->ProcessListSortColumn, static_cast<Qt::SortOrder>(CFG->ProcessListSortOrder));
     this->m_treeView->setAlternatingRowColors(true);
     this->m_treeView->setSelectionMode(QAbstractItemView::ExtendedSelection);
     this->m_treeView->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -307,7 +327,7 @@ void ProcessesWidget::setupTable()
     this->m_treeView->setColumnWidth(OS::ProcessTreeModel::ColName, 220);
     this->m_treeView->setColumnWidth(OS::ProcessTreeModel::ColUser, 90);
     this->m_treeView->setColumnWidth(OS::ProcessTreeModel::ColState, 90);
-    this->m_treeView->setColumnWidth(OS::ProcessTreeModel::ColCpu, 65);
+    this->m_treeView->setColumnWidth(OS::ProcessTreeModel::ColCpu, 75);
     this->m_treeView->setColumnWidth(OS::ProcessTreeModel::ColMemPss, 80);
     this->m_treeView->setColumnWidth(OS::ProcessTreeModel::ColMemRss, 80);
     this->m_treeView->setColumnWidth(OS::ProcessTreeModel::ColMemVirt, 80);
@@ -342,7 +362,14 @@ void ProcessesWidget::setupTable()
     if (migrateProcessNameFirstLayout)
         treeHeader->moveSection(treeHeader->visualIndex(OS::ProcessTreeModel::ColName), 0);
     this->m_treeView->setColumnWidth(OS::ProcessTreeModel::ColPid, 65);
+    treeHeader->setSectionResizeMode(OS::ProcessTreeModel::ColCmdline, QHeaderView::Stretch);
     this->syncAllProcessColumnVisibility();
+    this->m_treeView->sortByColumn(CFG->ProcessListSortColumn, initialSortOrder);
+    connect(treeHeader, &QHeaderView::sortIndicatorChanged, this, [](int column, Qt::SortOrder order)
+    {
+        CFG->ProcessListSortColumn = column;
+        CFG->ProcessListSortOrder  = static_cast<int>(order);
+    });
     this->m_treeHeaderPersistenceEnabled = true;
     if (savedProcessColumnSchemaVersion < PROCESS_COLUMN_SCHEMA_VERSION)
     {
@@ -361,6 +388,23 @@ void ProcessesWidget::setupTable()
     connect(terminate_action, &QAction::triggered, this, &ProcessesWidget::terminateSelectedProcesses);
     tv->addAction(terminate_action);
     this->m_treeView->addAction(terminate_action);
+
+    const int maxPerCorePct = 100 * this->m_model->LogicalCpuCount();
+    QLabel *cpuModeLabel = new QLabel(tr("CPU:"), this);
+    this->m_cpuModeCombo = new QComboBox(this);
+    this->m_cpuModeCombo->addItem(tr("All cores (100%)"), false);
+    this->m_cpuModeCombo->addItem(tr("Per core (%1%)").arg(maxPerCorePct), true);
+    this->m_cpuModeCombo->setToolTip(tr("Switch CPU % scale between total across all cores (100%) and per-core total (%1%)").arg(maxPerCorePct));
+    cpuModeLabel->setToolTip(this->m_cpuModeCombo->toolTip());
+
+    this->ui->toolbarLayout->addWidget(cpuModeLabel);
+    this->ui->toolbarLayout->addWidget(this->m_cpuModeCombo);
+
+    connect(this->m_cpuModeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int)
+    {
+        this->setCpuPerCore(this->m_cpuModeCombo->currentData().toBool());
+    });
+
     QLabel *viewModeLabel = new QLabel(tr("View:"), this);
     this->m_viewModeCombo = new QComboBox(this);
     this->m_viewModeCombo->addItem(tr("Group by application"), static_cast<int>(ViewMode::Grouped));
@@ -375,6 +419,8 @@ void ProcessesWidget::setupTable()
         const ViewMode mode = static_cast<ViewMode>(this->m_viewModeCombo->currentData().toInt());
         this->setViewMode(mode);
     });
+
+    this->setCpuPerCore(CFG->ProcessCpuPerCore);
 
     ViewMode initialMode = ViewMode::Grouped;
     if (CFG->ProcessViewMode == static_cast<int>(ViewMode::Table))
@@ -409,6 +455,8 @@ void ProcessesWidget::setViewMode(ViewMode mode)
         this->m_viewModeCombo->blockSignals(false);
     }
 
+    this->syncSortIndicators();
+
     const bool isTable = (mode == ViewMode::Table);
     const QList<OS::Process> &snapshot = this->m_lastProcessSnapshot.isEmpty()
                                          ? this->m_model->GetProcesses()
@@ -417,14 +465,14 @@ void ProcessesWidget::setViewMode(ViewMode mode)
     if (mode == ViewMode::Grouped)
     {
         this->m_treeModel->SetMode(OS::ProcessTreeModel::Mode::ApplicationGrouped);
-        this->m_treeModel->SetProcesses(snapshot);
+        this->m_treeModel->SetProcesses(this->filteredProcessesForTree(snapshot));
         if (this->m_treeModel->rowCount() > 0)
             this->m_treeView->resizeColumnToContents(OS::ProcessTreeModel::ColName);
     }
     else if (mode == ViewMode::Tree)
     {
         this->m_treeModel->SetMode(OS::ProcessTreeModel::Mode::ProcessHierarchy);
-        this->m_treeModel->SetProcesses(snapshot);
+        this->m_treeModel->SetProcesses(this->filteredProcessesForTree(snapshot));
         if (this->m_treeModel->rowCount() > 0)
             this->m_treeView->resizeColumnToContents(OS::ProcessTreeModel::ColName);
     }
@@ -447,6 +495,80 @@ void ProcessesWidget::setTreeViewMode(bool enabled)
     this->setViewMode(enabled ? ViewMode::Tree : ViewMode::Table);
 }
 
+void ProcessesWidget::setCpuPerCore(bool perCore)
+{
+    CFG->ProcessCpuPerCore = perCore;
+
+    if (this->m_cpuModeCombo)
+    {
+        this->m_cpuModeCombo->blockSignals(true);
+        const int idx = this->m_cpuModeCombo->findData(perCore);
+        if (idx >= 0)
+            this->m_cpuModeCombo->setCurrentIndex(idx);
+        this->m_cpuModeCombo->blockSignals(false);
+    }
+
+    this->m_model->SetCpuPerCore(perCore);
+    this->m_treeModel->SetCpuPerCore(perCore);
+
+    if (perCore)
+        this->ensureCpuColumnWidth();
+}
+
+void ProcessesWidget::ensureCpuColumnWidth()
+{
+    if (!CFG->ProcessCpuPerCore)
+        return;
+
+    const QString maxLabel = QString::number(100.0 * static_cast<double>(this->m_model->LogicalCpuCount()), 'f', 1) + QStringLiteral(" %");
+    auto widenView = [&maxLabel](QAbstractItemView *view, const QHeaderView *header, int col)
+    {
+        if (!view || !header || header->isSectionHidden(col))
+            return;
+
+        const QFontMetrics fm = view->fontMetrics();
+        const int minWidth = qMax(fm.horizontalAdvance(QStringLiteral("9999.9 %")),
+                                  fm.horizontalAdvance(maxLabel)) + 18;
+        if (auto *tv = qobject_cast<QTableView *>(view))
+        {
+            if (tv->columnWidth(col) < minWidth)
+                tv->setColumnWidth(col, minWidth);
+        }
+        else if (auto *trv = qobject_cast<QTreeView *>(view))
+        {
+            if (trv->columnWidth(col) < minWidth)
+                trv->setColumnWidth(col, minWidth);
+        }
+    };
+
+    if (this->ui->tableView)
+        widenView(this->ui->tableView, this->ui->tableView->horizontalHeader(), OS::ProcessModel::ColCpu);
+    if (this->m_treeView)
+        widenView(this->m_treeView, this->m_treeView->header(), OS::ProcessTreeModel::ColCpu);
+}
+
+void ProcessesWidget::syncSortIndicators()
+{
+    const int sortCol = qBound(0, CFG->ProcessListSortColumn, OS::ProcessModel::ColCount - 1);
+    const Qt::SortOrder sortOrder = (CFG->ProcessListSortOrder == static_cast<int>(Qt::AscendingOrder))
+                                        ? Qt::AscendingOrder
+                                        : Qt::DescendingOrder;
+
+    if (this->ui->tableView)
+    {
+        const QHeaderView *hv = this->ui->tableView->horizontalHeader();
+        if (!hv || hv->sortIndicatorSection() != sortCol || hv->sortIndicatorOrder() != sortOrder)
+            this->ui->tableView->sortByColumn(sortCol, sortOrder);
+    }
+
+    if (this->m_treeView)
+    {
+        const QHeaderView *th = this->m_treeView->header();
+        if (!th || th->sortIndicatorSection() != sortCol || th->sortIndicatorOrder() != sortOrder)
+            this->m_treeView->sortByColumn(sortCol, sortOrder);
+    }
+}
+
 void ProcessesWidget::SetActive(bool active)
 {
     if (this->m_active == active)
@@ -458,10 +580,12 @@ void ProcessesWidget::SetActive(bool active)
         // Refresh immediately when user switches to Processes tab.
         this->startRefresh();
         this->m_refreshTimer->start(CFG->RefreshRateMs);
-    } else
+    }
+    else
     {
         this->m_refreshTimer->stop();
         this->m_refreshPending = false;
+        this->m_pendingSelectPid = 0;
     }
 }
 
@@ -512,7 +636,7 @@ void ProcessesWidget::startRefresh()
                                                    options);
 }
 
-void ProcessesWidget::onRefreshFinished(int consumer, quint64 token, const QList<OS::Process> &processes)
+void ProcessesWidget::onRefreshFinished(int consumer, quint64 token, const QList<OS::Process> &processes, int totalTasks, qlonglong totalThreads)
 {
     if (consumer != static_cast<int>(OS::ProcessRefreshService::Consumer::Processes) || token != this->m_refreshToken)
         return;
@@ -529,41 +653,32 @@ void ProcessesWidget::onRefreshFinished(int consumer, quint64 token, const QList
     }
 
     UIHelper::TableSelectionSnapshot tableSnapshot;
-    QList<pid_t> treeSelection;
-    QSet<pid_t> expandedPids;
-    pid_t treeCurrentPid = 0;
-    int treeScroll = 0;
+    TreeStateSnapshot treeState;
 
     if (this->m_viewMode == ViewMode::Table)
     {
         tableSnapshot = UIHelper::CaptureTableSelection(this->ui->tableView, OS::ProcessModel::ColPid, std::bind(&ProcessesWidget::tableSelectionKeyFromProxy, this, std::placeholders::_1));
-    } else
-    {
-        treeSelection = this->selectedPids();
-        this->captureExpandedTreePids(QModelIndex(), expandedPids);
-
-        if (QItemSelectionModel *sel = this->m_treeView->selectionModel())
-        {
-            const QModelIndex cur = sel->currentIndex();
-            if (cur.isValid())
-            {
-                const QModelIndex src = this->m_treeProxy->mapToSource(cur.sibling(cur.row(), OS::ProcessTreeModel::ColPid));
-                if (src.isValid())
-                    treeCurrentPid = static_cast<pid_t>(this->m_treeModel->data(src, Qt::UserRole).toLongLong());
-            }
-        }
-        if (QScrollBar *sb = this->m_treeView->verticalScrollBar())
-            treeScroll = sb->value();
     }
+    else
+    {
+        treeState = this->captureTreeState();
+    }
+
     this->m_lastProcessSnapshot = processes;
+    this->m_totalTasks = totalTasks;
+    this->m_totalThreads = totalThreads;
     if (this->m_appRegistry)
         this->m_appRegistry->Annotate(this->m_lastProcessSnapshot);
 
+    const pid_t pendingSelectPid = this->m_pendingSelectPid;
+    this->m_pendingSelectPid = 0;
+
     if (this->m_viewMode != ViewMode::Table)
     {
-        this->m_treeModel->SetProcesses(this->m_lastProcessSnapshot);
-        this->restoreTreeStateDeferred(expandedPids, treeSelection, treeCurrentPid, treeScroll);
-    } else
+        this->m_treeModel->SetProcesses(this->filteredProcessesForTree(this->m_lastProcessSnapshot));
+        this->restoreTreeStateDeferred(treeState, pendingSelectPid);
+    }
+    else
     {
         this->m_model->SetProcesses(this->m_lastProcessSnapshot);
         UIHelper::RestoreTableSelection(
@@ -574,7 +689,11 @@ void ProcessesWidget::onRefreshFinished(int consumer, quint64 token, const QList
             [this](const QModelIndex &sourceIndex) -> QModelIndex { return this->m_proxy->mapFromSource(sourceIndex); },
             [this](const QModelIndex &sourceKeyIndex) -> QVariant { return this->m_model->data(sourceKeyIndex, Qt::UserRole); },
             tableSnapshot);
+        if (pendingSelectPid > 0)
+            this->selectProcessInTable(pendingSelectPid);
     }
+
+    this->updateStatusBar();
 
     if (this->m_active && this->m_refreshPending && !CFG->RefreshPaused)
     {
@@ -604,21 +723,23 @@ void ProcessesWidget::showHeaderContextMenu(QHeaderView *header, int columnCount
         QAction *action = menu.addAction(titleForColumn(col));
         action->setCheckable(true);
         action->setChecked(!header->isSectionHidden(col));
-        action->setData(col);
+        connect(action, &QAction::triggered, this, [this, col](bool checked)
+        {
+            this->syncProcessColumnVisibility(col, !checked);
+            if (checked && col == OS::ProcessModel::ColCpu)
+                this->ensureCpuColumnWidth();
+            this->saveTableHeaderState();
+            this->saveTreeHeaderState();
+            this->updateIOMetricsEnabledState();
+            this->updatePssMetricsEnabledState();
+        });
     }
 
+    menu.addSeparator();
+    this->addCpuUsageMenu(&menu);
     UIHelper::AddGlobalContextMenuItems(&menu, this);
 
-    const QAction *chosen = menu.exec(header->mapToGlobal(pos));
-    if (!chosen)
-        return;
-
-    const int col = chosen->data().toInt();
-    this->syncProcessColumnVisibility(col, !chosen->isChecked());
-    this->saveTableHeaderState();
-    this->saveTreeHeaderState();
-    this->updateIOMetricsEnabledState();
-    this->updatePssMetricsEnabledState();
+    menu.exec(header->mapToGlobal(pos));
 }
 
 void ProcessesWidget::saveTableHeaderState() const
@@ -774,42 +895,7 @@ void ProcessesWidget::onTableContextMenu(const QPoint &pos)
 
     // ── View submenu — always visible ────────────────────────────────────────
     QMenu *viewMenu = menu.addMenu(tr("View"));
-
-    QAction *kernelAct = viewMenu->addAction(tr("Kernel tasks"));
-    kernelAct->setCheckable(true);
-    kernelAct->setChecked(this->m_proxy->ShowKernelTasks);
-    connect(kernelAct, &QAction::toggled, this, &ProcessesWidget::setShowKernelTasks);
-
-    QAction *otherUsersAct = viewMenu->addAction(tr("Processes of other users"));
-    otherUsersAct->setCheckable(true);
-    otherUsersAct->setChecked(this->m_proxy->ShowOtherUsersProcs);
-    connect(otherUsersAct, &QAction::toggled, this, &ProcessesWidget::setShowOtherUsersProcesses);
-
-    QAction *iconsAct = viewMenu->addAction(tr("Show icons"));
-    iconsAct->setCheckable(true);
-    iconsAct->setChecked(CFG->ShowProcessIcons);
-    connect(iconsAct, &QAction::toggled, this, &ProcessesWidget::setShowIcons);
-
-    viewMenu->addSeparator();
-    QActionGroup *modeGroup = new QActionGroup(this);
-
-    QAction *groupedAct = viewMenu->addAction(tr("Group by application"));
-    groupedAct->setCheckable(true);
-    groupedAct->setActionGroup(modeGroup);
-    groupedAct->setChecked(this->m_viewMode == ViewMode::Grouped);
-    connect(groupedAct, &QAction::triggered, this, [this]() { this->setViewMode(ViewMode::Grouped); });
-
-    QAction *tableModeAct = viewMenu->addAction(tr("Table view (flat)"));
-    tableModeAct->setCheckable(true);
-    tableModeAct->setActionGroup(modeGroup);
-    tableModeAct->setChecked(this->m_viewMode == ViewMode::Table);
-    connect(tableModeAct, &QAction::triggered, this, [this]() { this->setViewMode(ViewMode::Table); });
-
-    QAction *treeModeAct = viewMenu->addAction(tr("Tree view (process tree)"));
-    treeModeAct->setCheckable(true);
-    treeModeAct->setActionGroup(modeGroup);
-    treeModeAct->setChecked(this->m_viewMode == ViewMode::Tree);
-    connect(treeModeAct, &QAction::triggered, this, [this]() { this->setViewMode(ViewMode::Tree); });
+    this->populateViewMenu(viewMenu);
     // ── Send signal submenu — requires selection ────────────────────────────
     menu.addSeparator();
     QMenu *signalMenu = menu.addMenu(tr("Send signal"));
@@ -908,41 +994,7 @@ void ProcessesWidget::onTreeContextMenu(const QPoint &pos)
 
     // ── View submenu — always visible ────────────────────────────────────────
     QMenu *viewMenu = menu.addMenu(tr("View"));
-    QAction *kernelAct = viewMenu->addAction(tr("Kernel tasks"));
-    kernelAct->setCheckable(true);
-    kernelAct->setChecked(this->m_proxy->ShowKernelTasks);
-    connect(kernelAct, &QAction::toggled, this, &ProcessesWidget::setShowKernelTasks);
-
-    QAction *otherUsersAct = viewMenu->addAction(tr("Processes of other users"));
-    otherUsersAct->setCheckable(true);
-    otherUsersAct->setChecked(this->m_proxy->ShowOtherUsersProcs);
-    connect(otherUsersAct, &QAction::toggled, this, &ProcessesWidget::setShowOtherUsersProcesses);
-
-    QAction *iconsAct = viewMenu->addAction(tr("Show icons"));
-    iconsAct->setCheckable(true);
-    iconsAct->setChecked(CFG->ShowProcessIcons);
-    connect(iconsAct, &QAction::toggled, this, &ProcessesWidget::setShowIcons);
-
-    viewMenu->addSeparator();
-    QActionGroup *modeGroup = new QActionGroup(this);
-
-    QAction *groupedAct = viewMenu->addAction(tr("Group by application"));
-    groupedAct->setCheckable(true);
-    groupedAct->setActionGroup(modeGroup);
-    groupedAct->setChecked(this->m_viewMode == ViewMode::Grouped);
-    connect(groupedAct, &QAction::triggered, this, [this]() { this->setViewMode(ViewMode::Grouped); });
-
-    QAction *tableModeAct = viewMenu->addAction(tr("Table view (flat)"));
-    tableModeAct->setCheckable(true);
-    tableModeAct->setActionGroup(modeGroup);
-    tableModeAct->setChecked(this->m_viewMode == ViewMode::Table);
-    connect(tableModeAct, &QAction::triggered, this, [this]() { this->setViewMode(ViewMode::Table); });
-
-    QAction *treeModeAct = viewMenu->addAction(tr("Tree view (process tree)"));
-    treeModeAct->setCheckable(true);
-    treeModeAct->setActionGroup(modeGroup);
-    treeModeAct->setChecked(this->m_viewMode == ViewMode::Tree);
-    connect(treeModeAct, &QAction::triggered, this, [this]() { this->setViewMode(ViewMode::Tree); });
+    this->populateViewMenu(viewMenu);
 
     // ── Send signal submenu — requires selection ────────────────────────────
     menu.addSeparator();
@@ -1004,17 +1056,117 @@ void ProcessesWidget::onTreeContextMenu(const QPoint &pos)
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+void ProcessesWidget::addCpuUsageMenu(QMenu *menu)
+{
+    if (!menu)
+        return;
+
+    QMenu *cpuMenu = menu->addMenu(tr("CPU usage"));
+    QActionGroup *cpuGroup = new QActionGroup(cpuMenu);
+    cpuGroup->setExclusive(true);
+
+    const int maxPerCorePct = 100 * this->m_model->LogicalCpuCount();
+
+    QAction *allCoresAct = cpuMenu->addAction(tr("Total across all cores (100%)"));
+    allCoresAct->setCheckable(true);
+    allCoresAct->setActionGroup(cpuGroup);
+    allCoresAct->setChecked(!CFG->ProcessCpuPerCore);
+    connect(allCoresAct, &QAction::triggered, this, [this]() { this->setCpuPerCore(false); });
+
+    QAction *perCoreAct = cpuMenu->addAction(tr("Per core (%1%)").arg(maxPerCorePct));
+    perCoreAct->setCheckable(true);
+    perCoreAct->setActionGroup(cpuGroup);
+    perCoreAct->setChecked(CFG->ProcessCpuPerCore);
+    connect(perCoreAct, &QAction::triggered, this, [this]() { this->setCpuPerCore(true); });
+}
+
+void ProcessesWidget::populateViewMenu(QMenu *viewMenu)
+{
+    if (!viewMenu)
+        return;
+
+    QAction *kernelAct = viewMenu->addAction(tr("Kernel tasks"));
+    kernelAct->setCheckable(true);
+    kernelAct->setChecked(this->m_proxy->ShowKernelTasks);
+    connect(kernelAct, &QAction::toggled, this, &ProcessesWidget::setShowKernelTasks);
+
+    QAction *otherUsersAct = viewMenu->addAction(tr("Processes of other users"));
+    otherUsersAct->setCheckable(true);
+    otherUsersAct->setChecked(this->m_proxy->ShowOtherUsersProcs);
+    connect(otherUsersAct, &QAction::toggled, this, &ProcessesWidget::setShowOtherUsersProcesses);
+
+    QAction *iconsAct = viewMenu->addAction(tr("Show icons"));
+    iconsAct->setCheckable(true);
+    iconsAct->setChecked(CFG->ShowProcessIcons);
+    connect(iconsAct, &QAction::toggled, this, &ProcessesWidget::setShowIcons);
+
+    viewMenu->addSeparator();
+    QActionGroup *modeGroup = new QActionGroup(viewMenu);
+
+    QAction *groupedAct = viewMenu->addAction(tr("Group by application"));
+    groupedAct->setCheckable(true);
+    groupedAct->setActionGroup(modeGroup);
+    groupedAct->setChecked(this->m_viewMode == ViewMode::Grouped);
+    connect(groupedAct, &QAction::triggered, this, [this]() { this->setViewMode(ViewMode::Grouped); });
+
+    QAction *tableModeAct = viewMenu->addAction(tr("Table view (flat)"));
+    tableModeAct->setCheckable(true);
+    tableModeAct->setActionGroup(modeGroup);
+    tableModeAct->setChecked(this->m_viewMode == ViewMode::Table);
+    connect(tableModeAct, &QAction::triggered, this, [this]() { this->setViewMode(ViewMode::Table); });
+
+    QAction *treeModeAct = viewMenu->addAction(tr("Tree view (process tree)"));
+    treeModeAct->setCheckable(true);
+    treeModeAct->setActionGroup(modeGroup);
+    treeModeAct->setChecked(this->m_viewMode == ViewMode::Tree);
+    connect(treeModeAct, &QAction::triggered, this, [this]() { this->setViewMode(ViewMode::Tree); });
+
+    viewMenu->addSeparator();
+    this->addCpuUsageMenu(viewMenu);
+}
+
 void ProcessesWidget::updateStatusBar()
 {
-    const QList<OS::Process> &all = this->m_lastProcessSnapshot.isEmpty()
-                                    ? this->m_model->GetProcesses()
-                                    : this->m_lastProcessSnapshot;
-    const int totalTasks = all.size();
+    int visibleTasks = 0;
+    qlonglong visibleThreads = 0;
+    const bool isTable = (this->m_viewMode == ViewMode::Table);
+    const QSortFilterProxyModel *proxy = isTable
+                                         ? static_cast<const QSortFilterProxyModel *>(this->m_proxy)
+                                         : this->m_treeProxy;
+    const int threadColumn = isTable
+                             ? static_cast<int>(OS::ProcessModel::ColThreads)
+                             : static_cast<int>(OS::ProcessTreeModel::ColThreads);
 
-    qlonglong totalThreads = 0;
-    for (const OS::Process &p : all)
-        totalThreads += qMax(0, p.Threads);
-    const QString text = tr("Tasks: %1  Threads: %2").arg(totalTasks).arg(totalThreads);
+    // Walk accepted rows, including children in collapsed branches. In Grouped view,
+    // skip synthetic group headers (which aggregate child threads) and count only real processes.
+    const auto countRows = [&](const auto &self, const QModelIndex &parent) -> void
+    {
+        const int rows = proxy->rowCount(parent);
+        for (int row = 0; row < rows; ++row)
+        {
+            const QModelIndex proxyIdx = proxy->index(row, 0, parent);
+            bool isGroupHeader = false;
+            if (!isTable)
+            {
+                const QModelIndex srcIdx = this->m_treeProxy->mapToSource(proxyIdx);
+                isGroupHeader = this->m_treeModel->IsGroupIndex(srcIdx);
+            }
+
+            if (!isGroupHeader)
+            {
+                ++visibleTasks;
+                visibleThreads += qMax(0, proxy->index(row, threadColumn, parent).data(Qt::UserRole).toInt());
+            }
+
+            if (!isTable)
+                self(self, proxyIdx);
+        }
+    };
+    countRows(countRows, QModelIndex());
+
+    QString text = tr("Tasks: %1  Threads: %2").arg(visibleTasks).arg(visibleThreads);
+    if (this->m_totalTasks > 0 && visibleTasks < this->m_totalTasks)
+        text += tr(" (Total including filtered items: Tasks: %1  Threads: %2)").arg(this->m_totalTasks).arg(this->m_totalThreads);
 
     this->ui->statusLabel->setText(text);
 }
@@ -1194,6 +1346,13 @@ void ProcessesWidget::setShowKernelTasks(bool checked)
     this->m_model->SetShowKernelTasks(checked);
     CFG->ShowKernelTasks = checked;
     this->m_proxy->ApplyFilters();
+    if (this->m_viewMode != ViewMode::Table)
+    {
+        const TreeStateSnapshot treeState = this->captureTreeState();
+        this->m_treeModel->SetProcesses(this->filteredProcessesForTree(this->m_lastProcessSnapshot));
+        this->restoreTreeStateDeferred(treeState);
+    }
+    this->updateStatusBar();
     this->onTimerTick();
     LOG_DEBUG(QString("ShowKernelTasks = %1").arg(checked));
 }
@@ -1204,6 +1363,13 @@ void ProcessesWidget::setShowOtherUsersProcesses(bool checked)
     this->m_model->SetShowOtherUsersProcs(checked);
     CFG->ShowOtherUsersProcs = checked;
     this->m_proxy->ApplyFilters();
+    if (this->m_viewMode != ViewMode::Table)
+    {
+        const TreeStateSnapshot treeState = this->captureTreeState();
+        this->m_treeModel->SetProcesses(this->filteredProcessesForTree(this->m_lastProcessSnapshot));
+        this->restoreTreeStateDeferred(treeState);
+    }
+    this->updateStatusBar();
     this->onTimerTick();
     LOG_DEBUG(QString("ShowOtherUsersProcs = %1").arg(checked));
 }
@@ -1222,24 +1388,104 @@ void ProcessesWidget::applyIconSetting()
     if (CFG->ShowProcessIcons && !this->m_appRegistry)
     {
         this->m_appRegistry = new OS::AppRegistry(this);
-        if (!this->m_lastProcessSnapshot.isEmpty())
-        {
-            this->m_appRegistry->Annotate(this->m_lastProcessSnapshot);
-            if (this->m_viewMode != ViewMode::Table)
-                this->m_treeModel->SetProcesses(this->m_lastProcessSnapshot);
-            else
-                this->m_model->SetProcesses(this->m_lastProcessSnapshot);
-        }
-    } else if (!CFG->ShowProcessIcons && this->m_appRegistry)
+    }
+    else if (!CFG->ShowProcessIcons && this->m_appRegistry)
     {
         delete this->m_appRegistry;
         this->m_appRegistry = nullptr;
     }
+
     this->m_model->SetAppRegistry(this->m_appRegistry);
     this->m_treeModel->SetAppRegistry(this->m_appRegistry);
+
+    if (this->m_appRegistry && !this->m_lastProcessSnapshot.isEmpty())
+    {
+        this->m_appRegistry->Annotate(this->m_lastProcessSnapshot);
+        if (this->m_viewMode != ViewMode::Table)
+        {
+            const TreeStateSnapshot treeState = this->captureTreeState();
+            this->m_treeModel->SetProcesses(this->filteredProcessesForTree(this->m_lastProcessSnapshot));
+            this->restoreTreeStateDeferred(treeState);
+        }
+        else
+        {
+            this->m_model->SetProcesses(this->m_lastProcessSnapshot);
+        }
+    }
+
     // Rows whose data did not change emit no dataChanged, so repaint to add or drop their icons.
     this->ui->tableView->viewport()->update();
     this->m_treeView->viewport()->update();
+}
+
+QList<OS::Process> ProcessesWidget::filteredProcessesForTree(const QList<OS::Process> &processes) const
+{
+    if (this->m_proxy->ShowKernelTasks && this->m_proxy->ShowOtherUsersProcs)
+        return processes;
+
+    const uid_t myUid = ::getuid();
+    QList<OS::Process> filtered;
+    filtered.reserve(processes.size());
+    for (const OS::Process &proc : processes)
+    {
+        if (!this->m_proxy->ShowKernelTasks && proc.IsKernelThread)
+            continue;
+        if (!this->m_proxy->ShowOtherUsersProcs && proc.UID != myUid)
+            continue;
+        filtered.append(proc);
+    }
+    return filtered;
+}
+
+ProcessesWidget::TreeStateSnapshot ProcessesWidget::captureTreeState() const
+{
+    TreeStateSnapshot snapshot;
+    if (!this->m_treeView)
+        return snapshot;
+
+    this->captureExpandedTreePids(QModelIndex(), snapshot.ExpandedPids);
+
+    if (QItemSelectionModel *sel = this->m_treeView->selectionModel())
+    {
+        const QModelIndexList rows = sel->selectedRows(OS::ProcessTreeModel::ColPid);
+        for (const QModelIndex &proxyIdx : rows)
+        {
+            const QModelIndex srcIdx = this->m_treeProxy->mapToSource(proxyIdx);
+            if (!srcIdx.isValid())
+                continue;
+
+            const pid_t pid = static_cast<pid_t>(this->m_treeModel->data(srcIdx, Qt::UserRole).toLongLong());
+            if (pid <= 0)
+                continue;
+
+            if (this->m_treeModel->IsGroupIndex(srcIdx))
+            {
+                if (!snapshot.SelectedGroupPrimaryPids.contains(pid))
+                    snapshot.SelectedGroupPrimaryPids.append(pid);
+            }
+            else
+            {
+                if (!snapshot.SelectedLeafPids.contains(pid))
+                    snapshot.SelectedLeafPids.append(pid);
+            }
+        }
+
+        const QModelIndex cur = sel->currentIndex();
+        if (cur.isValid())
+        {
+            const QModelIndex src = this->m_treeProxy->mapToSource(cur.sibling(cur.row(), OS::ProcessTreeModel::ColPid));
+            if (src.isValid())
+            {
+                snapshot.CurrentPid = static_cast<pid_t>(this->m_treeModel->data(src, Qt::UserRole).toLongLong());
+                snapshot.CurrentIsGroup = this->m_treeModel->IsGroupIndex(src);
+            }
+        }
+    }
+
+    if (QScrollBar *sb = this->m_treeView->verticalScrollBar())
+        snapshot.ScrollPos = sb->value();
+
+    return snapshot;
 }
 
 void ProcessesWidget::captureExpandedTreePids(const QModelIndex &parentProxy, QSet<pid_t> &expandedPids) const
@@ -1252,8 +1498,12 @@ void ProcessesWidget::captureExpandedTreePids(const QModelIndex &parentProxy, QS
             continue;
 
         const QModelIndex srcIdx = this->m_treeProxy->mapToSource(proxyIdx);
-        if (srcIdx.isValid())
+        if (srcIdx.isValid()
+            && (this->m_treeModel->GetMode() == OS::ProcessTreeModel::Mode::ProcessHierarchy
+                || this->m_treeModel->IsGroupIndex(srcIdx)))
+        {
             expandedPids.insert(static_cast<pid_t>(this->m_treeModel->data(srcIdx, Qt::UserRole).toLongLong()));
+        }
 
         this->captureExpandedTreePids(proxyIdx, expandedPids);
     }
@@ -1269,28 +1519,48 @@ void ProcessesWidget::restoreExpandedTreePids(const QModelIndex &sourceParent, c
             continue;
 
         const pid_t pid = static_cast<pid_t>(this->m_treeModel->data(srcIdx, Qt::UserRole).toLongLong());
-        const QModelIndex proxyIdx = this->m_treeProxy->mapFromSource(srcIdx);
-        if (proxyIdx.isValid() && expandedPids.contains(pid))
-            this->m_treeView->expand(proxyIdx);
+        if (expandedPids.contains(pid))
+        {
+            const QModelIndex targetSrc = (this->m_treeModel->GetMode() == OS::ProcessTreeModel::Mode::ApplicationGrouped)
+                                          ? this->m_treeModel->GroupIndexForPrimaryPid(pid)
+                                          : this->m_treeModel->IndexForPid(pid);
+            if (targetSrc == srcIdx)
+            {
+                const QModelIndex proxyIdx = this->m_treeProxy->mapFromSource(srcIdx);
+                if (proxyIdx.isValid())
+                    this->m_treeView->expand(proxyIdx);
+            }
+        }
 
         this->restoreExpandedTreePids(srcIdx, expandedPids);
     }
 }
 
-void ProcessesWidget::restoreTreeStateDeferred(const QSet<pid_t> &expandedPids,
-                                               const QList<pid_t> &treeSelection,
-                                               pid_t treeCurrentPid,
-                                               int treeScroll)
+void ProcessesWidget::restoreTreeStateDeferred(const TreeStateSnapshot &snapshot, pid_t pendingSelectPid)
 {
     // Defer restoration until the proxy/view settle after model reset/sort.
-    QTimer::singleShot(0, this, [this, expandedPids, treeSelection, treeCurrentPid, treeScroll]()
+    QTimer::singleShot(0, this, [this, snapshot, pendingSelectPid]()
     {
-        this->restoreExpandedTreePids(QModelIndex(), expandedPids);
+        this->restoreExpandedTreePids(QModelIndex(), snapshot.ExpandedPids);
+
+        if (pendingSelectPid > 0 && this->selectProcessInTree(pendingSelectPid))
+            return;
 
         if (QItemSelectionModel *sel = this->m_treeView->selectionModel())
         {
             sel->clearSelection();
-            for (pid_t pid : treeSelection)
+
+            for (pid_t pid : snapshot.SelectedGroupPrimaryPids)
+            {
+                QModelIndex src = this->m_treeModel->GroupIndexForPrimaryPid(pid);
+                if (!src.isValid())
+                    src = this->m_treeModel->IndexForPid(pid);
+                const QModelIndex proxy = this->m_treeProxy->mapFromSource(src);
+                if (proxy.isValid())
+                    sel->select(proxy, QItemSelectionModel::Select | QItemSelectionModel::Rows);
+            }
+
+            for (pid_t pid : snapshot.SelectedLeafPids)
             {
                 const QModelIndex src = this->m_treeModel->IndexForPid(pid);
                 const QModelIndex proxy = this->m_treeProxy->mapFromSource(src);
@@ -1298,9 +1568,13 @@ void ProcessesWidget::restoreTreeStateDeferred(const QSet<pid_t> &expandedPids,
                     sel->select(proxy, QItemSelectionModel::Select | QItemSelectionModel::Rows);
             }
 
-            if (treeCurrentPid > 0)
+            if (snapshot.CurrentPid > 0)
             {
-                const QModelIndex src = this->m_treeModel->IndexForPid(treeCurrentPid);
+                QModelIndex src = snapshot.CurrentIsGroup
+                                  ? this->m_treeModel->GroupIndexForPrimaryPid(snapshot.CurrentPid)
+                                  : this->m_treeModel->IndexForPid(snapshot.CurrentPid);
+                if (snapshot.CurrentIsGroup && !src.isValid())
+                    src = this->m_treeModel->IndexForPid(snapshot.CurrentPid);
                 const QModelIndex proxy = this->m_treeProxy->mapFromSource(src);
                 if (proxy.isValid())
                     sel->setCurrentIndex(proxy, QItemSelectionModel::NoUpdate);
@@ -1308,7 +1582,7 @@ void ProcessesWidget::restoreTreeStateDeferred(const QSet<pid_t> &expandedPids,
         }
 
         if (QScrollBar *sb = this->m_treeView->verticalScrollBar())
-            sb->setValue(treeScroll);
+            sb->setValue(snapshot.ScrollPos);
     });
 }
 

@@ -91,6 +91,7 @@ void Configuration::Load()
     this->ShowProcessIcons       = s.value("Processes/ShowIcons",           this->ShowProcessIcons).toBool();
     this->ProcessViewMode        = s.value("Processes/ViewMode",            this->ProcessViewMode).toInt();
     this->ProcessTreeView        = s.value("Processes/TreeView",            this->ProcessTreeView).toBool();
+    this->ProcessCpuPerCore      = s.value("Processes/CpuPerCore",          this->ProcessCpuPerCore).toBool();
     this->ProcessListSortColumn  = s.value("Processes/SortColumn",          this->ProcessListSortColumn).toInt();
     this->ProcessListSortOrder   = s.value("Processes/SortOrder",           this->ProcessListSortOrder).toInt();
     this->ProcessColumnSchemaVersion = s.value("Processes/ColumnSchemaVersion", this->ProcessColumnSchemaVersion).toInt();
@@ -189,6 +190,7 @@ void Configuration::Save()
     s.setValue("Processes/ShowIcons",           this->ShowProcessIcons);
     s.setValue("Processes/ViewMode",            this->ProcessViewMode);
     s.setValue("Processes/TreeView",            this->ProcessTreeView);
+    s.setValue("Processes/CpuPerCore",          this->ProcessCpuPerCore);
     s.setValue("Processes/SortColumn",          this->ProcessListSortColumn);
     s.setValue("Processes/SortOrder",           this->ProcessListSortOrder);
     s.setValue("Processes/ColumnSchemaVersion", this->ProcessColumnSchemaVersion);

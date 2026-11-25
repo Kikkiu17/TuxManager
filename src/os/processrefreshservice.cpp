@@ -25,16 +25,12 @@
 #include <QVector>
 
 #include <algorithm>
-#include <unistd.h>
 #include <utility>
 
 using namespace OS;
 
 ProcessRefreshWorker::ProcessRefreshWorker(QObject *parent) : QObject(parent)
 {
-    this->m_numCpus = static_cast<int>(::sysconf(_SC_NPROCESSORS_ONLN));
-    if (this->m_numCpus < 1)
-        this->m_numCpus = 1;
 }
 
 void ProcessRefreshWorker::fetch(int consumer,
@@ -48,9 +44,6 @@ void ProcessRefreshWorker::fetch(int consumer,
                                  uint myUid)
 {
     const quint64 totalJiffies = Proc::ReadTotalCpuJiffies();
-    const quint64 periodJiffies =
-        (this->m_prevCpuTotalTicks > 0 && totalJiffies > this->m_prevCpuTotalTicks)
-        ? (totalJiffies - this->m_prevCpuTotalTicks) : 0;
 
     Process::LoadOptions opts;
     opts.IncludeKernelTasks = includeKernelTasks;
@@ -61,133 +54,282 @@ void ProcessRefreshWorker::fetch(int consumer,
     opts.IsSuperuser = isSuperuser;
     opts.EffectiveUID = static_cast<uid_t>(effectiveUid);
 
-    QList<Process> fresh = Process::LoadAll(opts);
+    Process::Counts totals;
+    QList<Process> fresh = Process::LoadAll(opts, &totals);
 
     const bool isProcessConsumer = (consumer == static_cast<int>(ProcessRefreshService::Consumer::Processes));
-    if (collectPssMetrics)
-    {
-        this->updatePssMetrics(fresh, isSuperuser, static_cast<uid_t>(effectiveUid));
-    } else if (isProcessConsumer)
-    {
-        this->flushPssCache();
-    }
-
-    if (periodJiffies > 0)
-    {
-        const double totalPeriod = static_cast<double>(periodJiffies);
-
-        for (Process &proc : fresh)
-        {
-            const auto it = this->m_prevTicks.constFind(proc.PID);
-            if (it == this->m_prevTicks.cend() || proc.CPUTicks < it.value())
-                continue;
-
-            const double pct = static_cast<double>(proc.CPUTicks - it.value()) / totalPeriod * 100.0;
-            // Cap at 100% of the entire CPU
-            proc.CPUPercent = qMin(pct, 100.0);
-        }
-    }
-
     const bool handleIo = collectIOMetrics && isProcessConsumer;
-    const QHash<QString, quint64> currentDiskIoMs = handleIo ? Proc::ReadDiskIoMs() : QHash<QString, quint64>();
 
-    const qint64 ioElapsedMs = handleIo
-                               ? (this->m_prevIoSampleTimer.isValid() ? this->m_prevIoSampleTimer.restart() : -1)
-                               : -1;
-    if (handleIo && !this->m_prevIoSampleTimer.isValid())
-        this->m_prevIoSampleTimer.start();
-
-    if (handleIo && ioElapsedMs > 0)
-    {
-        const double elapsedSec = static_cast<double>(ioElapsedMs) / 1000.0;
-        for (Process &proc : fresh)
-        {
-            if (!proc.IOTotalsAvailable)
-                continue;
-
-            const auto readIt = this->m_prevIoReadBytes.constFind(proc.PID);
-            const auto writeIt = this->m_prevIoWriteBytes.constFind(proc.PID);
-            if (readIt == this->m_prevIoReadBytes.cend() || writeIt == this->m_prevIoWriteBytes.cend())
-                continue;
-            if (proc.IOReadBytes < readIt.value() || proc.IOWriteBytes < writeIt.value())
-                continue;
-
-            proc.IOReadBps = static_cast<double>(proc.IOReadBytes - readIt.value()) / elapsedSec;
-            proc.IOWriteBps = static_cast<double>(proc.IOWriteBytes - writeIt.value()) / elapsedSec;
-            proc.IORatesAvailable = true;
-        }
-
-        double totalDiskActivePct = 0.0;
-        if (!this->m_prevDiskIoMs.isEmpty())
-        {
-            for (auto it = currentDiskIoMs.cbegin(); it != currentDiskIoMs.cend(); ++it)
-            {
-                const auto prevIt = this->m_prevDiskIoMs.constFind(it.key());
-                if (prevIt == this->m_prevDiskIoMs.cend() || it.value() < prevIt.value())
-                    continue;
-                const quint64 deltaMs = it.value() - prevIt.value();
-                const double diskPct = qBound(0.0, static_cast<double>(deltaMs) * 100.0 / static_cast<double>(ioElapsedMs), 100.0);
-                totalDiskActivePct += diskPct;
-            }
-            totalDiskActivePct = qMin(totalDiskActivePct, 100.0);
-        }
-
-        double totalProcessIoBps = 0.0;
-        for (const Process &proc : std::as_const(fresh))
-        {
-            if (proc.IORatesAvailable)
-                totalProcessIoBps += (proc.IOReadBps + proc.IOWriteBps);
-        }
-
-        for (Process &proc : fresh)
-        {
-            if (!proc.IORatesAvailable || totalProcessIoBps <= 0.0)
-            {
-                proc.DiskPercent = 0.0;
-                continue;
-            }
-
-            const double procIoBps = proc.IOReadBps + proc.IOWriteBps;
-            if (!currentDiskIoMs.isEmpty())
-            {
-                proc.DiskPercent = (totalDiskActivePct > 0.0)
-                                   ? qBound(0.0, (procIoBps / totalProcessIoBps) * totalDiskActivePct, 100.0)
-                                   : 0.0;
-            }
-            else
-            {
-                // Fallback for environments without /proc/diskstats access: relative process share
-                proc.DiskPercent = qBound(0.0, (procIoBps / totalProcessIoBps) * 100.0, 100.0);
-            }
-        }
-    }
-
-    this->m_prevTicks.clear();
-    this->m_prevTicks.reserve(fresh.size());
-    for (const Process &proc : std::as_const(fresh))
-        this->m_prevTicks.insert(proc.PID, proc.CPUTicks);
-    this->m_prevCpuTotalTicks = totalJiffies;
-
+    // Sample diskstats and I/O elapsed timer adjacent to Process::LoadAll() and
+    // before updatePssMetrics() so PSS budget sampling never skews ioElapsedMs.
     if (handleIo)
     {
-        this->m_prevIoReadBytes.clear();
-        this->m_prevIoWriteBytes.clear();
-        for (const Process &proc : std::as_const(fresh))
-        {
-            if (!proc.IOTotalsAvailable)
-                continue;
-            this->m_prevIoReadBytes.insert(proc.PID, proc.IOReadBytes);
-            this->m_prevIoWriteBytes.insert(proc.PID, proc.IOWriteBytes);
-        }
-        this->m_prevDiskIoMs = currentDiskIoMs;
-        if (!this->m_prevIoSampleTimer.isValid())
-            this->m_prevIoSampleTimer.start();
-    } else if (isProcessConsumer)
+        const QHash<QString, Proc::DiskIoSample> currentDiskStats = Proc::ReadDiskIoStats();
+        this->updateIoMetrics(fresh, currentDiskStats);
+    }
+    else if (isProcessConsumer)
     {
         this->flushIOMetrics();
     }
 
-    emit fetched(consumer, token, fresh);
+    this->updateCpuMetrics(consumer, fresh, totalJiffies);
+
+    if (collectPssMetrics)
+    {
+        this->updatePssMetrics(fresh, isSuperuser, static_cast<uid_t>(effectiveUid));
+    }
+    else if (isProcessConsumer)
+    {
+        this->flushPssCache();
+    }
+
+    emit this->fetched(consumer, token, fresh, totals.Tasks, totals.Threads);
+}
+
+void ProcessRefreshWorker::updateCpuMetrics(int consumer, QList<Process> &processes, quint64 totalJiffies)
+{
+    CpuConsumerState &state = this->m_cpuStateByConsumer[consumer];
+    const quint64 periodJiffies =
+        (state.PrevTotalTicks > 0 && totalJiffies > state.PrevTotalTicks)
+        ? (totalJiffies - state.PrevTotalTicks)
+        : 0ULL;
+    const bool hasPrevState = (state.PrevTotalTicks > 0 && !state.PrevSamples.isEmpty());
+
+    if (periodJiffies > 0)
+    {
+        const double totalPeriod = static_cast<double>(periodJiffies);
+        QHash<Process::Identity, CpuSampleEntry> nextSamples;
+        nextSamples.reserve(processes.size());
+
+        for (Process &proc : processes)
+        {
+            const Process::Identity id = proc.GetIdentity();
+            double cpuPct = 0.0;
+
+            const auto it = state.PrevSamples.constFind(id);
+            if (it != state.PrevSamples.cend() && proc.CPUTicks >= it.value().Ticks)
+            {
+                const double pct = static_cast<double>(proc.CPUTicks - it.value().Ticks) / totalPeriod * 100.0;
+                // Cap at 100% of the entire CPU
+                cpuPct = qMin(pct, 100.0);
+            }
+
+            proc.CPUPercent = cpuPct;
+            nextSamples.insert(id, { proc.CPUTicks, cpuPct });
+        }
+
+        state.PrevSamples = std::move(nextSamples);
+        state.PrevTotalTicks = totalJiffies;
+        return;
+    }
+
+    if (hasPrevState)
+    {
+        for (Process &proc : processes)
+        {
+            const auto it = state.PrevSamples.constFind(proc.GetIdentity());
+            if (it != state.PrevSamples.cend())
+                proc.CPUPercent = it.value().LastCpuPercent;
+        }
+        return;
+    }
+
+    state.PrevSamples.clear();
+    state.PrevSamples.reserve(processes.size());
+    for (const Process &proc : std::as_const(processes))
+        state.PrevSamples.insert(proc.GetIdentity(), { proc.CPUTicks, 0.0 });
+    state.PrevTotalTicks = totalJiffies;
+}
+
+void ProcessRefreshWorker::updateIoMetrics(QList<Process> &processes, const QHash<QString, Proc::DiskIoSample> &currentDiskStats)
+{
+    static constexpr qint64 MIN_IO_SAMPLE_MS = 50;
+
+    const bool hasPrevIo = !this->m_prevIoSamples.isEmpty();
+    const qint64 elapsedCheckMs = this->m_prevIoSampleTimer.isValid()
+                                      ? this->m_prevIoSampleTimer.elapsed()
+                                      : -1;
+
+    if (elapsedCheckMs >= 0 && elapsedCheckMs < MIN_IO_SAMPLE_MS && hasPrevIo)
+    {
+        for (Process &proc : processes)
+        {
+            if (!proc.IOTotalsAvailable)
+                continue;
+
+            const auto it = this->m_prevIoSamples.constFind(proc.GetIdentity());
+            if (it == this->m_prevIoSamples.cend())
+                continue;
+
+            proc.IOReadBps = it.value().LastReadBps;
+            proc.IOWriteBps = it.value().LastWriteBps;
+            proc.DiskPercent = it.value().LastDiskPercent;
+            proc.IORatesAvailable = it.value().HasRates;
+        }
+        return;
+    }
+
+    qint64 ioElapsedMs = -1;
+    if (this->m_prevIoSampleTimer.isValid())
+        ioElapsedMs = this->m_prevIoSampleTimer.restart();
+    else
+        this->m_prevIoSampleTimer.start();
+
+    if (ioElapsedMs >= MIN_IO_SAMPLE_MS && hasPrevIo)
+    {
+        const double elapsedSec = static_cast<double>(ioElapsedMs) / 1000.0;
+        double totalProcReadBps = 0.0;
+        double totalProcWriteBps = 0.0;
+
+        for (Process &proc : processes)
+        {
+            if (!proc.IOTotalsAvailable)
+                continue;
+
+            const auto it = this->m_prevIoSamples.constFind(proc.GetIdentity());
+            if (it == this->m_prevIoSamples.cend())
+                continue;
+
+            const IoSampleEntry &prev = it.value();
+            if (proc.IOReadBytes < prev.ReadBytes || proc.IOWriteBytes < prev.WriteBytes)
+                continue;
+
+            const quint64 dRead = proc.IOReadBytes - prev.ReadBytes;
+            const quint64 dWriteRaw = proc.IOWriteBytes - prev.WriteBytes;
+            const quint64 dCancelled = (proc.IOCancelledWriteBytes >= prev.CancelledWriteBytes)
+                                           ? (proc.IOCancelledWriteBytes - prev.CancelledWriteBytes)
+                                           : 0ULL;
+            const quint64 dWriteNet = (dWriteRaw > dCancelled) ? (dWriteRaw - dCancelled) : 0ULL;
+
+            proc.IOReadBps = static_cast<double>(dRead) / elapsedSec;
+            proc.IOWriteBps = static_cast<double>(dWriteNet) / elapsedSec;
+            proc.IORatesAvailable = true;
+
+            totalProcReadBps += proc.IOReadBps;
+            totalProcWriteBps += proc.IOWriteBps;
+        }
+
+        if (currentDiskStats.isEmpty() || this->m_prevDiskStats.isEmpty())
+        {
+            for (Process &proc : processes)
+            {
+                if (proc.IORatesAvailable)
+                    proc.DiskPercent = -1.0;
+            }
+        }
+        else
+        {
+            double totalDiskReadBps = 0.0;
+            double totalDiskWriteBps = 0.0;
+            double weightedDiskReadActiveSum = 0.0;
+            double weightedDiskWriteActiveSum = 0.0;
+
+            for (auto it = currentDiskStats.cbegin(); it != currentDiskStats.cend(); ++it)
+            {
+                const auto prevIt = this->m_prevDiskStats.constFind(it.key());
+                if (prevIt == this->m_prevDiskStats.cend())
+                    continue;
+
+                const Proc::DiskIoSample &cur = it.value();
+                const Proc::DiskIoSample &prev = prevIt.value();
+                if (cur.IoMs < prev.IoMs
+                    || cur.ReadBytes < prev.ReadBytes
+                    || cur.WriteBytes < prev.WriteBytes
+                    || cur.ReadMs < prev.ReadMs
+                    || cur.WriteMs < prev.WriteMs
+                    || cur.DiscardMs < prev.DiscardMs
+                    || cur.FlushMs < prev.FlushMs)
+                {
+                    continue;
+                }
+
+                const quint64 dIoMs = cur.IoMs - prev.IoMs;
+                const quint64 dReadBytes = cur.ReadBytes - prev.ReadBytes;
+                const quint64 dWriteBytes = cur.WriteBytes - prev.WriteBytes;
+                const quint64 dReadMs = cur.ReadMs - prev.ReadMs;
+                const quint64 dWriteMs = cur.WriteMs - prev.WriteMs;
+                const quint64 dDiscardMs = cur.DiscardMs - prev.DiscardMs;
+                const quint64 dFlushMs = cur.FlushMs - prev.FlushMs;
+
+                const double diskActivePct = qBound(0.0,
+                                                    static_cast<double>(dIoMs) * 100.0 / static_cast<double>(ioElapsedMs),
+                                                    100.0);
+                const double diskReadBps = static_cast<double>(dReadBytes) / elapsedSec;
+                const double diskWriteBps = static_cast<double>(dWriteBytes) / elapsedSec;
+
+                double diskReadActivePct = 0.0;
+                double diskWriteActivePct = 0.0;
+                const quint64 totalOpMs = dReadMs + dWriteMs + dDiscardMs + dFlushMs;
+                if (totalOpMs > 0)
+                {
+                    diskReadActivePct = (dReadBytes > 0)
+                                            ? (diskActivePct * static_cast<double>(dReadMs) / static_cast<double>(totalOpMs))
+                                            : 0.0;
+                    diskWriteActivePct = (dWriteBytes > 0)
+                                             ? (diskActivePct * static_cast<double>(dWriteMs) / static_cast<double>(totalOpMs))
+                                             : 0.0;
+                }
+                else if (dReadBytes + dWriteBytes > 0)
+                {
+                    const double totalDiskBytes = static_cast<double>(dReadBytes + dWriteBytes);
+                    diskReadActivePct = diskActivePct * static_cast<double>(dReadBytes) / totalDiskBytes;
+                    diskWriteActivePct = diskActivePct * static_cast<double>(dWriteBytes) / totalDiskBytes;
+                }
+
+                totalDiskReadBps += diskReadBps;
+                totalDiskWriteBps += diskWriteBps;
+                weightedDiskReadActiveSum += diskReadBps * diskReadActivePct;
+                weightedDiskWriteActiveSum += diskWriteBps * diskWriteActivePct;
+            }
+
+            const double effectiveReadActivePct =
+                (totalDiskReadBps > 0.0) ? (weightedDiskReadActiveSum / totalDiskReadBps) : 0.0;
+            const double effectiveWriteActivePct =
+                (totalDiskWriteBps > 0.0) ? (weightedDiskWriteActiveSum / totalDiskWriteBps) : 0.0;
+
+            // Bound denominators by physical disk throughput so unobserved root/kernel/writeback I/O
+            // never inflates visible user-process Disk % shares.
+            const double denomReadBps = qMax(totalProcReadBps, totalDiskReadBps);
+            const double denomWriteBps = qMax(totalProcWriteBps, totalDiskWriteBps);
+
+            for (Process &proc : processes)
+            {
+                if (!proc.IORatesAvailable)
+                    continue;
+
+                const double readPct =
+                    (denomReadBps > 0.0 && effectiveReadActivePct > 0.0)
+                        ? ((proc.IOReadBps / denomReadBps) * effectiveReadActivePct)
+                        : 0.0;
+                const double writePct =
+                    (denomWriteBps > 0.0 && effectiveWriteActivePct > 0.0)
+                        ? ((proc.IOWriteBps / denomWriteBps) * effectiveWriteActivePct)
+                        : 0.0;
+                proc.DiskPercent = qBound(0.0, readPct + writePct, 100.0);
+            }
+        }
+    }
+
+    QHash<Process::Identity, IoSampleEntry> nextIoSamples;
+    nextIoSamples.reserve(processes.size());
+    for (const Process &proc : std::as_const(processes))
+    {
+        if (!proc.IOTotalsAvailable)
+            continue;
+
+        IoSampleEntry entry;
+        entry.ReadBytes = proc.IOReadBytes;
+        entry.WriteBytes = proc.IOWriteBytes;
+        entry.CancelledWriteBytes = proc.IOCancelledWriteBytes;
+        entry.LastReadBps = proc.IOReadBps;
+        entry.LastWriteBps = proc.IOWriteBps;
+        entry.LastDiskPercent = proc.DiskPercent;
+        entry.HasRates = proc.IORatesAvailable;
+        nextIoSamples.insert(proc.GetIdentity(), entry);
+    }
+
+    this->m_prevIoSamples = std::move(nextIoSamples);
+    this->m_prevDiskStats = currentDiskStats;
 }
 
 void ProcessRefreshWorker::updatePssMetrics(QList<Process> &processes, bool isSuperuser, uid_t effectiveUid)
@@ -349,9 +491,8 @@ void ProcessRefreshWorker::updatePssMetrics(QList<Process> &processes, bool isSu
 
 void ProcessRefreshWorker::flushIOMetrics()
 {
-    this->m_prevIoReadBytes.clear();
-    this->m_prevIoWriteBytes.clear();
-    this->m_prevDiskIoMs.clear();
+    this->m_prevIoSamples.clear();
+    this->m_prevDiskStats.clear();
     this->m_prevIoSampleTimer.invalidate();
 }
 

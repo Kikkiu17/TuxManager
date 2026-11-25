@@ -69,6 +69,7 @@ class Configuration : public QObject
         bool ShowProcessIcons    { true };  ///< Show application icons in the process name column
         bool ProcessTreeView     { false }; ///< Processes tab: false=table, true=tree
         int  ProcessViewMode     { 0 };     ///< 0=Grouped (default), 1=Table (flat), 2=Tree (hierarchy)
+        bool ProcessCpuPerCore   { false }; ///< Scale CPU% by logical CPU count instead of total 0-100%
         int  ProcessListSortColumn { 4 };   ///< ColCpu — column index to sort by
         int  ProcessListSortOrder  { 1 };   ///< Qt::DescendingOrder
         int  ProcessColumnSchemaVersion { 0 }; ///< Version for persisted process header states.

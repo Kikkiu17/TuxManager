@@ -38,9 +38,12 @@ class Storage
             quint64        PrevReadSecs  { 0 };
             quint64        PrevWriteSecs { 0 };
             quint64        PrevIoMs      { 0 };
+            quint64        PrevIos       { 0 };
+            quint64        PrevIoWaitMs  { 0 };
             double         ActivePct     { 0.0 };
             double         ReadBps       { 0.0 };
             double         WriteBps      { 0.0 };
+            double         AvgResponseMs { 0.0 };
             double         MaxTransferBps { 0.0 };
             quint64        TotalReadBytes { 0 };
             quint64        TotalWriteBytes { 0 };
@@ -55,7 +58,8 @@ class Storage
 
         Storage();
 
-        /// Sample /proc/diskstats and compute per-device active time % and read/write throughput.
+        /// Sample /proc/diskstats and compute per-device active time %, read/write throughput,
+        /// and average response time.
         bool Sample();
 
         int DiskCount() const { return static_cast<int>(this->m_disks.size()); }
@@ -63,6 +67,7 @@ class Storage
 
 
     private:
+        static QString kernelDeviceName(const QString &devPath);
         static QStringList listTrackedBlockDevices(const QSet<QString> &measurableDevices);
         static QSet<QString> resolveBaseBlockDevices(const QString &devName);
         static bool shouldIgnoreBlockDevice(const QString &baseName);

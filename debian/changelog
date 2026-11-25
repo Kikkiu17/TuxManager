@@ -1,3 +1,12 @@
+tux-manager (1.3.0) unstable; urgency=medium
+
+  * Overhaul Processes Disk % calculation and fix Processes column accuracy, sorting, grouping, and status-bar counts
+  * Add CPU usage scale toggle (All cores 100% vs Per core 100% * N) with persisted configuration
+  * Add Disk Average Response Time metric, device-mapper storage resolution, and non-root DIMM fallback
+  * Make Performance detail pane scrollable, clamp oversized window geometry, update live graph hover tooltips, and update Nix flake inputs
+
+ -- Emanuele <emanuele.sormani@outlook.com>  Wed, 25 Nov 2026 00:36:49 +0100
+
 tux-manager (1.0.8) unstable; urgency=medium
 
   * Add multilingual UI support and Simplified Chinese translations

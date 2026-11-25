@@ -19,6 +19,7 @@
 #ifndef OS_PROCESSREFRESHSERVICE_H
 #define OS_PROCESSREFRESHSERVICE_H
 
+#include "proc.h"
 #include "process.h"
 
 #include <QElapsedTimer>
@@ -50,7 +51,7 @@ namespace OS
                        uint myUid);
 
         signals:
-            void fetched(int consumer, quint64 token, const QList<Process> &processes);
+            void fetched(int consumer, quint64 token, const QList<Process> &processes, int totalTasks, qlonglong totalThreads);
 
         private:
             struct PssCacheEntry
@@ -62,16 +63,38 @@ namespace OS
                 bool    PermissionDenied{ false };
             };
 
-            QHash<pid_t, quint64>                  m_prevTicks;
-            QHash<pid_t, quint64>                  m_prevIoReadBytes;
-            QHash<pid_t, quint64>                  m_prevIoWriteBytes;
-            QHash<QString, quint64>                m_prevDiskIoMs;
-            QHash<Process::Identity, PssCacheEntry> m_pssCache;
-            quint64                                m_prevCpuTotalTicks { 0 };
-            quint64                                m_pssTick { 0 };
-            QElapsedTimer                          m_prevIoSampleTimer;
-            int                                    m_numCpus { 1 };
+            struct CpuSampleEntry
+            {
+                quint64 Ticks          { 0 };
+                double  LastCpuPercent { 0.0 };
+            };
 
+            struct CpuConsumerState
+            {
+                QHash<Process::Identity, CpuSampleEntry> PrevSamples;
+                quint64                                  PrevTotalTicks { 0 };
+            };
+
+            struct IoSampleEntry
+            {
+                quint64 ReadBytes           { 0 };
+                quint64 WriteBytes          { 0 };
+                quint64 CancelledWriteBytes { 0 };
+                double  LastReadBps         { 0.0 };
+                double  LastWriteBps        { 0.0 };
+                double  LastDiskPercent     { 0.0 };
+                bool    HasRates            { false };
+            };
+
+            QHash<int, CpuConsumerState>            m_cpuStateByConsumer;
+            QHash<Process::Identity, IoSampleEntry> m_prevIoSamples;
+            QHash<QString, Proc::DiskIoSample>      m_prevDiskStats;
+            QHash<Process::Identity, PssCacheEntry> m_pssCache;
+            quint64                                 m_pssTick { 0 };
+            QElapsedTimer                           m_prevIoSampleTimer;
+
+            void updateCpuMetrics(int consumer, QList<Process> &processes, quint64 totalJiffies);
+            void updateIoMetrics(QList<Process> &processes, const QHash<QString, Proc::DiskIoSample> &currentDiskStats);
             void updatePssMetrics(QList<Process> &processes, bool isSuperuser, uid_t effectiveUid);
             void flushIOMetrics();
             void flushPssCache();
@@ -103,7 +126,7 @@ namespace OS
                                 bool isSuperuser,
                                 uint effectiveUid,
                                 uint myUid);
-            void snapshotReady(int consumer, quint64 token, const QList<Process> &processes);
+            void snapshotReady(int consumer, quint64 token, const QList<Process> &processes, int totalTasks, qlonglong totalThreads);
 
         private:
             QThread              *m_workerThread { nullptr };

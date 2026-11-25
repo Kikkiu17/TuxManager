@@ -2,7 +2,7 @@
   description = "A Linux Task Manager alternative built with Qt6, inspired by the Windows Task Manager but designed to go further - providing deep visibility into system processes, performance metrics, users, and services.";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/25.11";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
   };
 
@@ -22,7 +22,7 @@
 
         packages.default = pkgs.stdenv.mkDerivation {
             pname = "tux-manager";
-            version = "1.2.2";
+            version = "1.3.0";
             src = ./.;
             
             nativeBuildInputs = with pkgs.kdePackages; [ qmake qttools wrapQtAppsHook ];

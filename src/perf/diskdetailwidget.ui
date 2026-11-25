@@ -271,6 +271,23 @@
        </item>
       </layout>
      </item>
+     <item row="1" column="2">
+      <layout class="QVBoxLayout" name="responseTimeLayout">
+       <property name="spacing"><number>1</number></property>
+       <item>
+        <widget class="QLabel" name="responseTimeLabel">
+         <property name="styleSheet"><string>font-size: 9pt;</string></property>
+         <property name="text"><string>Average response time</string></property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="responseTimeValueLabel">
+         <property name="styleSheet"><string>font-size: 15pt;</string></property>
+         <property name="text"><string>0 ms</string></property>
+        </widget>
+       </item>
+      </layout>
+     </item>
 
      <!-- Right Key-Value Property Table (Column 3, spanning rows 0..1) -->
      <item row="0" column="3" rowspan="2">

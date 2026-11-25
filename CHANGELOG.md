@@ -1,3 +1,12 @@
+# 1.3.0
+  * Overhauled Processes Disk % calculation using read/write-separated, cancelled-write-netted, physical-device-bounded I/O stats
+  * Added CPU usage scale toggle in Processes (`All cores (100%)` vs `Per core (100% * N)`) with toolbar/menu controls and persisted setting
+  * Fixed Processes column sorting, alignment, grouping, cycle guards, thread-safe UID lookup, long process names, and filtered status-bar task/thread counts
+  * Added Disk Average Response Time (`await`) metric and `/dev/mapper` / Flatpak device-mapper resolution in Performance -> Disk
+  * Added non-root udev DMI fallback for Memory DIMM slot count and speed
+  * Made Performance detail pane scrollable, clamped restored/default window geometry to screen bounds, and enabled live hover tooltip updates on graphs
+  * Updated `flake.nix` / `flake.lock` nixpkgs input to `nixos-unstable`
+
 # 1.0.8
   * Added localization support based on the system locale for:
     * Simplified Chinese

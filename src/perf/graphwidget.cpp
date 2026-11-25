@@ -21,6 +21,7 @@
 #include "misc.h"
 
 #include <cmath>
+#include <QHideEvent>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
@@ -63,6 +64,8 @@ void GraphWidget::Tick(bool requestUpdate)
     ++this->m_historyTick;
     if (requestUpdate)
         this->update();
+    if (this->m_isHovered && this->m_hoverTooltipEnabled && this->m_hoverSlot >= 0 && this->isVisible())
+        this->updateTooltip(this->m_lastHoverGlobalPos);
 }
 
 void GraphWidget::ClearDataSource()
@@ -288,11 +291,16 @@ void GraphWidget::mouseMoveEvent(QMouseEvent *event)
     const double stepX = static_cast<double>(qMax(1, this->width())) / static_cast<double>(sampleCount - 1);
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
     const double mouseX = event->position().x();
+    const QPoint globalPos = event->globalPosition().toPoint();
 #else
     const double mouseX = event->pos().x();
+    const QPoint globalPos = event->globalPos();
 #endif
     const int slot = qBound(0, static_cast<int>(std::lround(mouseX / stepX)), sampleCount - 1);
     const bool slotChanged = (slot != this->m_hoverSlot);
+
+    this->m_isHovered = true;
+    this->m_lastHoverGlobalPos = globalPos;
 
     if (slotChanged)
     {
@@ -301,47 +309,32 @@ void GraphWidget::mouseMoveEvent(QMouseEvent *event)
         this->update(oldRect.united(this->hoverLineRect(this->m_hoverSlot)));
     }
 
-    if (this->m_hoverTooltipEnabled && slotChanged)
-    {
-        const int idx1 = sampleIndexForSlot(this->m_data ? this->m_data->Size() : 0, slot, sampleCount);
-        const int idx2 = sampleIndexForSlot(this->m_overlayData ? this->m_overlayData->Size() : 0, slot, sampleCount);
-
-        if (idx1 >= 0 || idx2 >= 0)
-        {
-            QString tip;
-            if (idx1 >= 0)
-                tip += tr("%1: %2").arg(this->m_primaryName, this->formatValue(this->m_data->At(idx1)));
-            if (idx2 >= 0)
-            {
-                if (!tip.isEmpty())
-                    tip += "\n";
-                tip += tr("%1: %2").arg(this->m_secondaryName, this->formatValue(this->m_overlayData->At(idx2)));
-            }
-            const int secAgo = sampleCount - 1 - slot;
-            if (!tip.isEmpty())
-                tip += tr("\n%1 s ago").arg(secAgo);
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
-            QToolTip::showText(event->globalPosition().toPoint(), tip, this);
-#else
-            QToolTip::showText(event->globalPos(), tip, this);
-#endif
-        } else
-        {
-            QToolTip::hideText();
-        }
-    }
+    if (this->m_hoverTooltipEnabled && (slotChanged || !QToolTip::isVisible()))
+        this->updateTooltip(globalPos);
 
     QWidget::mouseMoveEvent(event);
 }
 
 void GraphWidget::leaveEvent(QEvent *event)
 {
+    this->m_isHovered = false;
     const QRect oldRect = this->hoverLineRect(this->m_hoverSlot);
     this->m_hoverSlot = -1;
     if (this->m_hoverTooltipEnabled)
         QToolTip::hideText();
     this->update(oldRect);
     QWidget::leaveEvent(event);
+}
+
+void GraphWidget::hideEvent(QHideEvent *event)
+{
+    this->m_isHovered = false;
+    const QRect oldRect = this->hoverLineRect(this->m_hoverSlot);
+    this->m_hoverSlot = -1;
+    if (this->m_hoverTooltipEnabled)
+        QToolTip::hideText();
+    this->update(oldRect);
+    QWidget::hideEvent(event);
 }
 
 QRect GraphWidget::hoverLineRect(int slot) const
@@ -397,5 +390,35 @@ QString GraphWidget::formatValue(double v) const
             if (this->m_maxVal <= 100.0)
                 return QString::number(v, 'f', 1) + tr("%");
             return QString::number(v, 'f', 2);
+    }
+}
+
+void GraphWidget::updateTooltip(const QPoint &globalPos)
+{
+    if (!this->m_hoverTooltipEnabled || this->m_hoverSlot < 0)
+        return;
+
+    const int sampleCount = qMax(2, this->m_sampleCapacity);
+    const int idx1 = sampleIndexForSlot(this->m_data ? this->m_data->Size() : 0, this->m_hoverSlot, sampleCount);
+    const int idx2 = sampleIndexForSlot(this->m_overlayData ? this->m_overlayData->Size() : 0, this->m_hoverSlot, sampleCount);
+
+    if (idx1 >= 0 || idx2 >= 0)
+    {
+        QString tip;
+        if (idx1 >= 0)
+            tip += tr("%1: %2").arg(this->m_primaryName, this->formatValue(this->m_data->At(idx1)));
+        if (idx2 >= 0)
+        {
+            if (!tip.isEmpty())
+                tip += "\n";
+            tip += tr("%1: %2").arg(this->m_secondaryName, this->formatValue(this->m_overlayData->At(idx2)));
+        }
+        const int secAgo = sampleCount - 1 - this->m_hoverSlot;
+        if (!tip.isEmpty())
+            tip += tr("\n%1 s ago").arg(secAgo);
+        QToolTip::showText(globalPos, tip, this);
+    } else
+    {
+        QToolTip::hideText();
     }
 }

@@ -31,6 +31,7 @@
 
 #include <QHash>
 #include <QPoint>
+#include <QScrollArea>
 #include <QSplitter>
 #include <QStackedWidget>
 #include <QToolButton>
@@ -77,6 +78,7 @@ class PerformanceWidget : public QWidget
         Ui::PerformanceWidget      *ui;
         Perf::SidePanel            *m_sidePanel;
         QStackedWidget             *m_stack;
+        QScrollArea                *m_detailScrollArea { nullptr };
         QSplitter                  *m_splitter { nullptr };
         QHash<Perf::SidePanelItem *, QWidget *> m_detailByItem;
         Perf::SidePanelItem        *m_cpuItem { nullptr };

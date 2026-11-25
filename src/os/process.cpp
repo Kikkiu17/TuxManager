@@ -21,6 +21,8 @@
 #include <QDir>
 #include <QFile>
 #include <QHash>
+#include <QMutex>
+#include <QMutexLocker>
 #include <QObject>
 
 #include <cerrno>
@@ -40,23 +42,53 @@ namespace
     //! Calls sysconf once and caches the result - this can't change in runtime
     long cachedPageSize()
     {
-        static long s_pageSize = sysconf(_SC_PAGESIZE);
-        if (s_pageSize <= 0)
-            s_pageSize = 4096L;
+        static const long s_pageSize = []()
+        {
+            const long size = ::sysconf(_SC_PAGESIZE);
+            return (size > 0) ? size : 4096L;
+        }();
         return s_pageSize;
     }
 
     QString cachedUserNameForUid(uid_t uid)
     {
+        static QMutex s_userCacheMutex;
         static QHash<uid_t, QString> s_userNameByUid;
 
-        const auto it = s_userNameByUid.constFind(uid);
-        if (it != s_userNameByUid.cend())
-            return it.value();
+        {
+            QMutexLocker locker(&s_userCacheMutex);
+            const auto it = s_userNameByUid.constFind(uid);
+            if (it != s_userNameByUid.cend())
+                return it.value();
+        }
 
-        const struct passwd *pw = getpwuid(uid);
-        const QString userName = pw ? QString::fromUtf8(pw->pw_name)
-                                    : QString::number(uid);
+        long bufSize = ::sysconf(_SC_GETPW_R_SIZE_MAX);
+        if (bufSize <= 0)
+            bufSize = 16384L;
+
+        QByteArray buffer(static_cast<qsizetype>(bufSize), Qt::Uninitialized);
+        struct passwd pwd{};
+        struct passwd *result = nullptr;
+        int rc = 0;
+
+        for (;;)
+        {
+            rc = ::getpwuid_r(uid, &pwd, buffer.data(), static_cast<size_t>(buffer.size()), &result);
+            if (rc == EINTR)
+                continue;
+            if (rc == ERANGE && buffer.size() < 1024 * 1024)
+            {
+                buffer.resize(buffer.size() * 2);
+                continue;
+            }
+            break;
+        }
+
+        const QString userName = (rc == 0 && result && result->pw_name)
+                                     ? QString::fromUtf8(result->pw_name)
+                                     : QString::number(uid);
+
+        QMutexLocker locker(&s_userCacheMutex);
         s_userNameByUid.insert(uid, userName);
         return userName;
     }
@@ -73,6 +105,7 @@ QString Process::GetStateString(char state)
         case 'T': return QObject::tr("Stopped");
         case 't': return QObject::tr("Tracing stop");
         case 'I': return QObject::tr("Idle");
+        case 'P': return QObject::tr("Parked");
         case 'X': return QObject::tr("Dead");
         default:  return QString(state);
     }
@@ -178,7 +211,7 @@ uint OS::qHash(const Process::Identity &key, uint seed)
 
 // ── Private: load a single process ───────────────────────────────────────────
 
-bool Process::loadOneStatAndUid(pid_t pid, Process &out)
+bool Process::loadOneStatAndUid(pid_t pid, Process &out, QByteArray &commName)
 {
     out.PID = pid;
 
@@ -201,7 +234,8 @@ bool Process::loadOneStatAndUid(pid_t pid, Process &out)
     if (commStart < 0 || commEnd < 0 || commEnd <= commStart)
         return false;
 
-    out.Name = QString::fromUtf8(statData.mid(commStart + 1, commEnd - commStart - 1));
+    commName = statData.mid(commStart + 1, commEnd - commStart - 1);
+    out.Name = QString::fromUtf8(commName);
 
     // Fields after ") " (0-indexed):
     //  0:state 1:ppid 2:pgrp 3:session 4:tty_nr 5:tpgid 6:flags
@@ -228,7 +262,8 @@ bool Process::loadOneStatAndUid(pid_t pid, Process &out)
     out.vmSizeKb       = f[20].toULongLong() / 1024ULL;
 
     const long pageSize = cachedPageSize();
-    out.VMRssKb        = static_cast<quint64>(f[21].toLongLong()) * static_cast<quint64>(pageSize) / 1024ULL;
+    const qlonglong rssPages = qMax<qlonglong>(0, f[21].toLongLong());
+    out.VMRssKb        = static_cast<quint64>(rssPages) * static_cast<quint64>(pageSize) / 1024ULL;
     out.MemoryPssKb    = out.VMRssKb;
     out.MemoryPssExact = (out.IsKernelThread || out.VMRssKb == 0);
 
@@ -236,9 +271,12 @@ bool Process::loadOneStatAndUid(pid_t pid, Process &out)
     // The /proc/<pid> directory is owned by the process's real UID — far more
     // reliable than parsing /proc/<pid>/status which may use spaces or tabs.
     {
+        char procPath[64];
+        std::snprintf(procPath, sizeof(procPath), "/proc/%d", static_cast<int>(pid));
         struct stat st{};
-        if (::stat(QString("/proc/%1").arg(pid).toLocal8Bit().constData(), &st) == 0)
-            out.UID = st.st_uid;
+        if (::stat(procPath, &st) != 0)
+            return false;
+        out.UID = st.st_uid;
     }
 
     return true;
@@ -257,11 +295,20 @@ void Process::loadStatm(Process &proc)
         return;
 
     const quint64 pageKb = static_cast<quint64>(cachedPageSize()) / 1024ULL;
-    proc.vmSizeKb = fields.at(0).toULongLong() * pageKb;
-    proc.VMRssKb  = fields.at(1).toULongLong() * pageKb;
-    proc.SharedKb = fields.at(2).toULongLong() * pageKb;
-    proc.TextKb   = fields.at(3).toULongLong() * pageKb;
-    proc.DataKb   = fields.at(5).toULongLong() * pageKb;
+    auto parsePagesKb = [pageKb](const QByteArray &token) -> quint64
+    {
+        bool ok = false;
+        const qlonglong signedPages = token.toLongLong(&ok);
+        if (!ok || signedPages <= 0 || static_cast<quint64>(signedPages) > (1ULL << 48))
+            return 0ULL;
+        return static_cast<quint64>(signedPages) * pageKb;
+    };
+
+    proc.vmSizeKb = parsePagesKb(fields.at(0));
+    proc.VMRssKb  = parsePagesKb(fields.at(1));
+    proc.SharedKb = parsePagesKb(fields.at(2));
+    proc.TextKb   = parsePagesKb(fields.at(3));
+    proc.DataKb   = parsePagesKb(fields.at(5));
     proc.MemoryPssKb = proc.PrivateRssKb();
     proc.MemoryPssExact = (proc.IsKernelThread || proc.VMRssKb == 0);
 }
@@ -274,6 +321,7 @@ bool Process::loadIO(Process &proc)
 
     quint64 readBytes = 0;
     quint64 writeBytes = 0;
+    quint64 cancelledWriteBytes = 0;
     bool haveReadBytes = false;
     bool haveWriteBytes = false;
 
@@ -294,10 +342,15 @@ bool Process::loadIO(Process &proc)
         {
             readBytes = value.toULongLong();
             haveReadBytes = true;
-        } else if (key == "write_bytes")
+        }
+        else if (key == "write_bytes")
         {
             writeBytes = value.toULongLong();
             haveWriteBytes = true;
+        }
+        else if (key == "cancelled_write_bytes")
+        {
+            cancelledWriteBytes = value.toULongLong();
         }
     }
 
@@ -308,12 +361,13 @@ bool Process::loadIO(Process &proc)
 
     proc.IOReadBytes = readBytes;
     proc.IOWriteBytes = writeBytes;
+    proc.IOCancelledWriteBytes = cancelledWriteBytes;
     proc.IOTotalsAvailable = true;
     proc.IOPermissionDenied = false;
     return true;
 }
 
-void Process::loadUserAndCmdline(Process &proc)
+void Process::loadUserAndCmdline(Process &proc, const QByteArray &commName)
 {
     // Cache UID -> username/fallback string to avoid repeated getpwuid() lookups.
     proc.User = cachedUserNameForUid(proc.UID);
@@ -331,6 +385,19 @@ void Process::loadUserAndCmdline(Process &proc)
     {
         QByteArray data = cmdFile.readAll();
         cmdFile.close();
+
+        // comm is limited to 15 bytes. Extend it only when argv[0]'s basename
+        // agrees with that prefix, preserving deliberately different task names.
+        // Compare raw bytes because comm may end partway through a UTF-8 character.
+        if (commName.size() == 15)
+        {
+            const int argEnd = data.indexOf('\0');
+            const QByteArray argZero = (argEnd < 0) ? data : data.left(argEnd);
+            const QByteArray basename = argZero.mid(argZero.lastIndexOf('/') + 1);
+            if (basename.size() > commName.size() && basename.startsWith(commName))
+                proc.Name = QString::fromUtf8(basename);
+        }
+
         data.replace('\0', ' ');
         proc.CmdLine = QString::fromUtf8(data).trimmed();
     }
@@ -358,8 +425,11 @@ QList<Process> Process::LoadAll()
     return Process::LoadAll(LoadOptions{});
 }
 
-QList<Process> Process::LoadAll(const LoadOptions &options)
+QList<Process> Process::LoadAll(const LoadOptions &options, Counts *totals)
 {
+    if (totals)
+        *totals = Counts{};
+
     QList<Process> list;
 
     const QDir procDir("/proc");
@@ -368,14 +438,21 @@ QList<Process> Process::LoadAll(const LoadOptions &options)
     list.reserve(entries.size());
     for (const QString &entry : entries)
     {
-        bool ok;
+        bool ok = false;
         const pid_t pid = static_cast<pid_t>(entry.toInt(&ok));
-        if (!ok)
+        if (!ok || pid <= 0)
             continue;
 
         Process proc;
-        if (!loadOneStatAndUid(pid, proc))
+        QByteArray commName;
+        if (!loadOneStatAndUid(pid, proc, commName))
             continue;
+
+        if (totals)
+        {
+            ++totals->Tasks;
+            totals->Threads += qMax(0, proc.Threads);
+        }
 
         // Fast prefilter on fields available from stat + proc dir ownership.
         if (!options.IncludeKernelTasks && proc.IsKernelThread)
@@ -410,7 +487,7 @@ QList<Process> Process::LoadAll(const LoadOptions &options)
             }
         }
 
-        loadUserAndCmdline(proc);
+        loadUserAndCmdline(proc, commName);
         loadCGroup(proc);
         list.append(proc);
     }

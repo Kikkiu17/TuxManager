@@ -82,24 +82,28 @@ namespace OS
             void SetShowOtherUsersProcs(bool show) { this->m_showOtherUsersProcs = show; }
             void SetIOMetricsEnabled(bool enabled);
             void FlushIOMetrics();
+            void SetCpuPerCore(bool perCore);
+            bool IsCpuPerCore() const { return this->m_cpuPerCore; }
+            int  LogicalCpuCount() const { return this->m_numCpus; }
 
             /// The raw process list (read-only access for external use).
             const QList<Process> &GetProcesses() const { return this->m_processes; }
 
         private:
-            QList<Process>          m_processes;
-            AppRegistry            *m_appRegistry { nullptr };
-            QHash<pid_t, quint64>   m_prevTicks;               ///< cpuTicks from previous sample
-            QHash<pid_t, quint64>   m_prevIoReadBytes;
-            QHash<pid_t, quint64>   m_prevIoWriteBytes;
-            QHash<QString, quint64> m_prevDiskIoMs;
-            quint64                 m_prevCpuTotalTicks { 0 }; ///< Total CPU jiffies from previous /proc/stat sample
-            QElapsedTimer           m_prevIoSampleTimer;
-            int                     m_numCpus { 1 };           ///< Online CPU count for normalisation
-            uid_t                   m_myUid { 0 };
-            bool                    m_showKernelTasks { true };
-            bool                    m_showOtherUsersProcs { true };
-            bool                    m_ioMetricsEnabled { false };
+            QList<Process>                    m_processes;
+            AppRegistry                      *m_appRegistry { nullptr };
+            QHash<Process::Identity, quint64> m_prevTicks;               ///< cpuTicks from previous sample
+            QHash<Process::Identity, quint64> m_prevIoReadBytes;
+            QHash<Process::Identity, quint64> m_prevIoWriteBytes;
+            QHash<QString, quint64>           m_prevDiskIoMs;
+            quint64                           m_prevCpuTotalTicks { 0 }; ///< Total CPU jiffies from previous /proc/stat sample
+            QElapsedTimer                     m_prevIoSampleTimer;
+            int                               m_numCpus { 1 };           ///< Online CPU count for normalisation
+            uid_t                             m_myUid { 0 };
+            bool                              m_showKernelTasks { true };
+            bool                              m_showOtherUsersProcs { true };
+            bool                              m_ioMetricsEnabled { false };
+            bool                              m_cpuPerCore { false };
 
             static QString columnHeader(Column col);
     };

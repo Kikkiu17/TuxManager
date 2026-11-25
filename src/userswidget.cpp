@@ -172,8 +172,10 @@ void UsersWidget::startRefresh()
                                                    opts);
 }
 
-void UsersWidget::onRefreshFinished(int consumer, quint64 token, const QList<OS::Process> &processes)
+void UsersWidget::onRefreshFinished(int consumer, quint64 token, const QList<OS::Process> &processes, int totalTasks, qlonglong totalThreads)
 {
+    Q_UNUSED(totalTasks);
+    Q_UNUSED(totalThreads);
     if (consumer != static_cast<int>(OS::ProcessRefreshService::Consumer::Users) || token != this->m_refreshToken)
         return;
 

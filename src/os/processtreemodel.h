@@ -81,8 +81,12 @@ namespace OS
             /// Registry used to provide icons for the name column; nullptr disables icons.
             void SetAppRegistry(AppRegistry *registry) { this->m_appRegistry = registry; }
             QModelIndex IndexForPid(pid_t pid) const;
+            QModelIndex GroupIndexForPrimaryPid(pid_t pid) const;
             QList<pid_t> PidsForIndex(const QModelIndex &index) const;
             bool IsGroupIndex(const QModelIndex &index) const;
+            void SetCpuPerCore(bool perCore);
+            bool IsCpuPerCore() const { return this->m_cpuPerCore; }
+            int  LogicalCpuCount() const { return this->m_numCpus; }
 
         private:
             struct Node
@@ -99,9 +103,13 @@ namespace OS
             AppRegistry *m_appRegistry { nullptr };
             QHash<pid_t, Node *> m_byPid;
             QHash<pid_t, Node *> m_groupHeaders;
+            int m_numCpus { 1 };
+            bool m_cpuPerCore { false };
 
             void buildGroupedTree(const QList<Process> &processes);
             void buildHierarchyTree(const QList<Process> &processes);
+            QModelIndex indexForNode(Node *node) const;
+            void emitCpuColumnDataChanged(const QModelIndex &parent);
 
             static QString columnHeader(Column col);
             static void freeNode(Node *node);

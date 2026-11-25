@@ -42,6 +42,9 @@ namespace Ui
 }
 QT_END_NAMESPACE
 
+class QComboBox;
+class QMenu;
+
 //! Houses both table and tree widgets with lists of processes, the table and tree all reuse
 //! same context menu and filters, but are two separate widgets that user can toggle between
 //!
@@ -68,7 +71,7 @@ class ProcessesWidget : public QWidget
 
     private slots:
         void onTimerTick();
-        void onRefreshFinished(int consumer, quint64 token, const QList<OS::Process> &processes);
+        void onRefreshFinished(int consumer, quint64 token, const QList<OS::Process> &processes, int totalTasks, qlonglong totalThreads);
         void onHeaderContextMenu(const QPoint &pos);
         void onTableContextMenu(const QPoint &pos);
         void onTreeContextMenu(const QPoint &pos);
@@ -84,7 +87,8 @@ class ProcessesWidget : public QWidget
         QTimer                   *m_refreshTimer;
         OS::ProcessRefreshService *m_processRefreshService { nullptr };
         QTreeView                *m_treeView { nullptr };
-        class QComboBox          *m_viewModeCombo { nullptr };
+        QComboBox                *m_viewModeCombo { nullptr };
+        QComboBox                *m_cpuModeCombo { nullptr };
         bool                      m_active { false };
         bool                      m_tableContextMenuOpen { false };
         ViewMode                  m_viewMode { ViewMode::Grouped };
@@ -93,13 +97,31 @@ class ProcessesWidget : public QWidget
         bool                      m_tableHeaderPersistenceEnabled { false };
         bool                      m_treeHeaderPersistenceEnabled { false };
         quint64                   m_refreshToken { 0 };
+        pid_t                     m_pendingSelectPid { 0 };
         QList<OS::Process>        m_lastProcessSnapshot;
+        int                       m_totalTasks { 0 };
+        qlonglong                 m_totalThreads { 0 };
         QModelIndex               m_contextMenuTargetIndex;
+
+        struct TreeStateSnapshot
+        {
+            QSet<pid_t>  ExpandedPids;
+            QList<pid_t> SelectedLeafPids;
+            QList<pid_t> SelectedGroupPrimaryPids;
+            pid_t        CurrentPid { 0 };
+            bool         CurrentIsGroup { false };
+            int          ScrollPos { 0 };
+        };
 
         void setupTable();
         void startRefresh();
         void setViewMode(ViewMode mode);
         void setTreeViewMode(bool enabled);
+        void setCpuPerCore(bool perCore);
+        void ensureCpuColumnWidth();
+        void syncSortIndicators();
+        void addCpuUsageMenu(QMenu *menu);
+        void populateViewMenu(QMenu *viewMenu);
         void showHeaderContextMenu(QHeaderView *header, int columnCount, const std::function<QString(int)> &titleForColumn, const QPoint &pos);
         void saveTableHeaderState() const;
         void saveTreeHeaderState() const;
@@ -111,6 +133,7 @@ class ProcessesWidget : public QWidget
         bool anyPssMetricsColumnVisible() const;
         bool selectProcessInTree(pid_t pid);
         bool selectProcessInTable(pid_t pid);
+        QList<OS::Process> filteredProcessesForTree(const QList<OS::Process> &processes) const;
         QVariant tableSelectionKeyFromProxy(const QModelIndex &proxyKeyIndex) const;
         void copyRowSelectionToClipboard();
         void copyCellSelectionToClipboard();
@@ -124,9 +147,10 @@ class ProcessesWidget : public QWidget
         void setShowOtherUsersProcesses(bool checked);
         void setShowIcons(bool checked);
         void applyIconSetting();
+        TreeStateSnapshot captureTreeState() const;
         void captureExpandedTreePids(const QModelIndex &parentProxy, QSet<pid_t> &expandedPids) const;
         void restoreExpandedTreePids(const QModelIndex &sourceParent, const QSet<pid_t> &expandedPids);
-        void restoreTreeStateDeferred(const QSet<pid_t> &expandedPids, const QList<pid_t> &treeSelection, pid_t treeCurrentPid, int treeScroll);
+        void restoreTreeStateDeferred(const TreeStateSnapshot &snapshot, pid_t pendingSelectPid = 0);
 
         /// Collect PIDs of all currently selected rows.
         QList<pid_t> selectedPids() const;

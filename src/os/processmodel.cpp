@@ -75,9 +75,7 @@ namespace
 
 ProcessModel::ProcessModel(QObject *parent) : QAbstractTableModel(parent)
 {
-    this->m_numCpus = static_cast<int>(sysconf(_SC_NPROCESSORS_ONLN));
-    if (this->m_numCpus < 1)
-        this->m_numCpus = 1;
+    this->m_numCpus = qMax(1, static_cast<int>(::sysconf(_SC_NPROCESSORS_ONLN)));
     this->m_myUid = ::getuid();
 }
 
@@ -123,7 +121,11 @@ QVariant ProcessModel::data(const QModelIndex &index, int role) const
             case ColName:     return proc.Name;
             case ColUser:     return proc.User;
             case ColState:    return Process::GetStateString(proc.State);
-            case ColCpu:      return QString::number(proc.CPUPercent, 'f', 1) + " %";
+            case ColCpu:
+            {
+                const double cpuPct = proc.CPUPercent * (this->m_cpuPerCore ? static_cast<double>(this->m_numCpus) : 1.0);
+                return QString::number(cpuPct, 'f', 1) + " %";
+            }
             case ColMemPss:   return Misc::FormatKiB(proc.MemoryPssKb, 0);
             case ColMemRss:   return Misc::FormatKiB(proc.VMRssKb, 0);
             case ColMemVirt:  return Misc::FormatKiB(proc.vmSizeKb, 0);
@@ -133,9 +135,19 @@ QVariant ProcessModel::data(const QModelIndex &index, int role) const
             case ColDisk:
                 if (proc.IOPermissionDenied || !proc.IOTotalsAvailable)
                     return QString("?");
-                return proc.IORatesAvailable ? (QString::number(proc.DiskPercent, 'f', 1) + " %") : tr("measuring...");
-            case ColIoReads:  return proc.IOTotalsAvailable ? Misc::FormatBytes(proc.IOReadBytes, 0) : QString("?");
-            case ColIoWrites: return proc.IOTotalsAvailable ? Misc::FormatBytes(proc.IOWriteBytes, 0) : QString("?");
+                if (!proc.IORatesAvailable)
+                    return tr("measuring...");
+                if (proc.DiskPercent < 0.0)
+                    return QString("?");
+                return QString::number(proc.DiskPercent, 'f', 1) + " %";
+            case ColIoReads:
+                return (!proc.IOPermissionDenied && proc.IOTotalsAvailable)
+                       ? Misc::FormatBytes(proc.IOReadBytes, 0)
+                       : QString("?");
+            case ColIoWrites:
+                return (!proc.IOPermissionDenied && proc.IOTotalsAvailable)
+                       ? Misc::FormatBytes(proc.IOWriteBytes, 0)
+                       : QString("?");
             case ColIoReadsPerSec:
                 if (proc.IOPermissionDenied || !proc.IOTotalsAvailable)
                     return QString("?");
@@ -158,7 +170,11 @@ QVariant ProcessModel::data(const QModelIndex &index, int role) const
         switch (static_cast<Column>(index.column()))
         {
             case ColPid:      return static_cast<qlonglong>(proc.PID);
-            case ColCpu:      return proc.CPUPercent;
+            case ColCpu:
+            {
+                const double cpuPct = proc.CPUPercent * (this->m_cpuPerCore ? static_cast<double>(this->m_numCpus) : 1.0);
+                return cpuPct;
+            }
             case ColMemPss:   return static_cast<qulonglong>(proc.MemoryPssKb);
             case ColMemRss:   return static_cast<qulonglong>(proc.VMRssKb);
             case ColMemVirt:  return static_cast<qulonglong>(proc.vmSizeKb);
@@ -166,23 +182,23 @@ QVariant ProcessModel::data(const QModelIndex &index, int role) const
             case ColMemText:  return static_cast<qulonglong>(proc.TextKb);
             case ColMemData:  return static_cast<qulonglong>(proc.DataKb);
             case ColDisk:
-                return proc.IORatesAvailable
-                       ? QVariant::fromValue(proc.DiskPercent)
-                       : QVariant::fromValue(-1.0);
+                if (proc.IOPermissionDenied || !proc.IOTotalsAvailable || !proc.IORatesAvailable || proc.DiskPercent < 0.0)
+                    return QVariant::fromValue(-1.0);
+                return QVariant::fromValue(proc.DiskPercent);
             case ColIoReads:
-                return proc.IOTotalsAvailable
+                return (!proc.IOPermissionDenied && proc.IOTotalsAvailable)
                        ? QVariant::fromValue(static_cast<qlonglong>(proc.IOReadBytes))
                        : QVariant::fromValue(static_cast<qlonglong>(-1));
             case ColIoWrites:
-                return proc.IOTotalsAvailable
+                return (!proc.IOPermissionDenied && proc.IOTotalsAvailable)
                        ? QVariant::fromValue(static_cast<qlonglong>(proc.IOWriteBytes))
                        : QVariant::fromValue(static_cast<qlonglong>(-1));
             case ColIoReadsPerSec:
-                return proc.IORatesAvailable
+                return (!proc.IOPermissionDenied && proc.IOTotalsAvailable && proc.IORatesAvailable)
                        ? QVariant::fromValue(proc.IOReadBps)
                        : QVariant::fromValue(-1.0);
             case ColIoWritesPerSec:
-                return proc.IORatesAvailable
+                return (!proc.IOPermissionDenied && proc.IOTotalsAvailable && proc.IORatesAvailable)
                        ? QVariant::fromValue(proc.IOWriteBps)
                        : QVariant::fromValue(-1.0);
             case ColThreads:  return proc.Threads;
@@ -220,8 +236,28 @@ QVariant ProcessModel::data(const QModelIndex &index, int role) const
 
     if (role == Qt::ToolTipRole)
     {
-        if (static_cast<Column>(index.column()) == ColMemPss && !proc.MemoryPssExact && proc.VMRssKb > 0)
-            return tr("Estimated from private RSS (insufficient permissions or pending PSS sample)");
+        switch (static_cast<Column>(index.column()))
+        {
+            case ColMemPss:
+                if (!proc.MemoryPssExact && proc.VMRssKb > 0)
+                    return tr("Estimated from private RSS (insufficient permissions or pending PSS sample)");
+                break;
+            case ColDisk:
+                if (proc.IOPermissionDenied)
+                    return tr("Insufficient permissions to read process I/O statistics");
+                if (proc.IOTotalsAvailable && proc.IORatesAvailable && proc.DiskPercent < 0.0)
+                    return tr("Disk utilization unavailable (no block device statistics)");
+                break;
+            case ColIoReads:
+            case ColIoWrites:
+            case ColIoReadsPerSec:
+            case ColIoWritesPerSec:
+                if (proc.IOPermissionDenied)
+                    return tr("Insufficient permissions to read process I/O statistics");
+                break;
+            default:
+                break;
+        }
     }
 
     return {};
@@ -229,11 +265,21 @@ QVariant ProcessModel::data(const QModelIndex &index, int role) const
 
 QVariant ProcessModel::headerData(int section, Qt::Orientation orientation, int role) const
 {
-    if (orientation != Qt::Horizontal || role != Qt::DisplayRole)
+    if (orientation != Qt::Horizontal || section < 0 || section >= ColCount)
         return {};
-    if (section < 0 || section >= ColCount)
-        return {};
-    return columnHeader(static_cast<Column>(section));
+
+    const Column col = static_cast<Column>(section);
+    if (role == Qt::DisplayRole)
+        return columnHeader(col);
+
+    if (role == Qt::ToolTipRole && col == ColCpu)
+    {
+        if (this->m_cpuPerCore)
+            return tr("Per-core CPU usage (0–%1% across %2 logical CPUs)").arg(100 * this->m_numCpus).arg(this->m_numCpus);
+        return tr("Total CPU usage across all cores (0–100%)");
+    }
+
+    return {};
 }
 
 Qt::ItemFlags ProcessModel::flags(const QModelIndex &index) const
@@ -293,9 +339,9 @@ void ProcessModel::SetProcesses(const QList<Process> &processes)
             if (!processDataEquals(this->m_processes.at(row), sortedProcesses.at(row)))
             {
                 this->m_processes[row] = sortedProcesses.at(row);
-                emit dataChanged(this->index(row, 0),
-                                 this->index(row, ColCount - 1),
-                                 { Qt::DisplayRole, Qt::DecorationRole, Qt::UserRole, Qt::TextAlignmentRole });
+                emit this->dataChanged(this->index(row, 0),
+                                       this->index(row, ColCount - 1),
+                                       { Qt::DisplayRole, Qt::DecorationRole, Qt::UserRole, Qt::TextAlignmentRole, Qt::ToolTipRole });
             }
             ++row;
             continue;
@@ -359,15 +405,13 @@ QList<Process> ProcessModel::RefreshSnapshot()
 
         for (Process &proc : fresh)
         {
-            if (this->m_prevTicks.contains(proc.PID))
+            const Process::Identity id = proc.GetIdentity();
+            const auto it = this->m_prevTicks.constFind(id);
+            if (it != this->m_prevTicks.cend() && proc.CPUTicks >= it.value())
             {
-                const quint64 prevTicks = this->m_prevTicks.value(proc.PID);
-                if (proc.CPUTicks >= prevTicks)
-                {
-                    const double pct = static_cast<double>(proc.CPUTicks - prevTicks) / totalPeriod * 100.0;
-                    // Cap at 100% of the entire CPU
-                    proc.CPUPercent = qMin(pct, 100.0);
-                }
+                const double pct = static_cast<double>(proc.CPUTicks - it.value()) / totalPeriod * 100.0;
+                // Cap at 100% of the entire CPU
+                proc.CPUPercent = qMin(pct, 100.0);
             }
         }
     }
@@ -387,11 +431,14 @@ QList<Process> ProcessModel::RefreshSnapshot()
         {
             if (!proc.IOTotalsAvailable)
                 continue;
-            if (!this->m_prevIoReadBytes.contains(proc.PID) || !this->m_prevIoWriteBytes.contains(proc.PID))
+            const Process::Identity id = proc.GetIdentity();
+            const auto readIt = this->m_prevIoReadBytes.constFind(id);
+            const auto writeIt = this->m_prevIoWriteBytes.constFind(id);
+            if (readIt == this->m_prevIoReadBytes.cend() || writeIt == this->m_prevIoWriteBytes.cend())
                 continue;
 
-            const quint64 prevReadBytes = this->m_prevIoReadBytes.value(proc.PID);
-            const quint64 prevWriteBytes = this->m_prevIoWriteBytes.value(proc.PID);
+            const quint64 prevReadBytes = readIt.value();
+            const quint64 prevWriteBytes = writeIt.value();
             if (proc.IOReadBytes < prevReadBytes || proc.IOWriteBytes < prevWriteBytes)
                 continue;
 
@@ -424,6 +471,11 @@ QList<Process> ProcessModel::RefreshSnapshot()
 
         for (Process &proc : fresh)
         {
+            if (currentDiskIoMs.isEmpty() || this->m_prevDiskIoMs.isEmpty())
+            {
+                proc.DiskPercent = proc.IORatesAvailable ? -1.0 : 0.0;
+                continue;
+            }
             if (!proc.IORatesAvailable || totalProcessIoBps <= 0.0)
             {
                 proc.DiskPercent = 0.0;
@@ -431,35 +483,30 @@ QList<Process> ProcessModel::RefreshSnapshot()
             }
 
             const double procIoBps = proc.IOReadBps + proc.IOWriteBps;
-            if (!currentDiskIoMs.isEmpty())
-            {
-                proc.DiskPercent = (totalDiskActivePct > 0.0)
-                                   ? qBound(0.0, (procIoBps / totalProcessIoBps) * totalDiskActivePct, 100.0)
-                                   : 0.0;
-            }
-            else
-            {
-                proc.DiskPercent = qBound(0.0, (procIoBps / totalProcessIoBps) * 100.0, 100.0);
-            }
+            proc.DiskPercent = (totalDiskActivePct > 0.0)
+                               ? qBound(0.0, (procIoBps / totalProcessIoBps) * totalDiskActivePct, 100.0)
+                               : 0.0;
         }
     }
 
     // Store snapshots for next sample
     this->m_prevTicks.clear();
-    for (const Process &proc : fresh)
-        this->m_prevTicks.insert(proc.PID, proc.CPUTicks);
+    this->m_prevTicks.reserve(fresh.size());
+    for (const Process &proc : std::as_const(fresh))
+        this->m_prevTicks.insert(proc.GetIdentity(), proc.CPUTicks);
     this->m_prevCpuTotalTicks = totalJiffies;
 
     if (this->m_ioMetricsEnabled)
     {
         this->m_prevIoReadBytes.clear();
         this->m_prevIoWriteBytes.clear();
-        for (const Process &proc : fresh)
+        for (const Process &proc : std::as_const(fresh))
         {
             if (!proc.IOTotalsAvailable)
                 continue;
-            this->m_prevIoReadBytes.insert(proc.PID, proc.IOReadBytes);
-            this->m_prevIoWriteBytes.insert(proc.PID, proc.IOWriteBytes);
+            const Process::Identity id = proc.GetIdentity();
+            this->m_prevIoReadBytes.insert(id, proc.IOReadBytes);
+            this->m_prevIoWriteBytes.insert(id, proc.IOWriteBytes);
         }
         this->m_prevDiskIoMs = currentDiskIoMs;
         if (!this->m_prevIoSampleTimer.isValid())
@@ -484,6 +531,21 @@ void ProcessModel::FlushIOMetrics()
     this->m_prevIoWriteBytes.clear();
     this->m_prevDiskIoMs.clear();
     this->m_prevIoSampleTimer.invalidate();
+}
+
+void ProcessModel::SetCpuPerCore(bool perCore)
+{
+    if (this->m_cpuPerCore == perCore)
+        return;
+
+    this->m_cpuPerCore = perCore;
+    emit this->headerDataChanged(Qt::Horizontal, ColCpu, ColCpu);
+    if (!this->m_processes.isEmpty())
+    {
+        emit this->dataChanged(this->index(0, ColCpu),
+                               this->index(this->m_processes.size() - 1, ColCpu),
+                               { Qt::DisplayRole, Qt::UserRole, Qt::ToolTipRole });
+    }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
